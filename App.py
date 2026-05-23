@@ -14,27 +14,17 @@ try:
 except Exception as e:
     st.error("Erro de conexão com o servidor.")
 
-# --- CHAVE DE CONVITE SECRETA ---
+# --- CONFIGURAÇÕES GERAIS ---
 CHAVE_SECRETA = "ChatPrivado2026"
-
-# Foto padrão para quem não escolher uma foto de perfil
 FOTO_PADRAO = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
 
 # Controle de sessão (gerenciamento de login)
 if "usuario_logado" not in st.session_state:
     st.session_state.usuario_logado = None
 
-# Chave dinâmica para resetar o uploader de foto do chat
-if "id_upload" not in st.session_state:
-    st.session_state.id_upload = str(uuid.uuid4())
-
-# --- FUNÇÃO PARA APAGAR MENSAGEM ---
-def apagar_mensagem(id_mensagem):
-    try:
-        supabase.table("bate-papo_profissional").delete().eq("id", id_mensagem).execute()
-        st.toast("Mensagem apagada! 🗑️")
-    except Exception as e:
-        st.error("Erro ao deletar a mensagem.")
+# Controla em qual sala o usuário está (None significa que ele está no Menu Principal)
+if "sala_ativa" not in st.session_state:
+    st.session_state.sala_ativa = None
 
 # --- TELA DE AUTENTICAÇÃO (LOGIN / CADASTRO) ---
 if st.session_state.usuario_logado is None:
@@ -42,7 +32,6 @@ if st.session_state.usuario_logado is None:
     
     aba = st.tabs(["Fazer Login", "Criar Nova Conta"])
     
-    # --- ABA 1: LOGIN ---
     with aba[0]:
         st.subheader("Acesse sua Conta")
         login_user = st.text_input("Usuário:", key="login_user").strip()
@@ -63,7 +52,6 @@ if st.session_state.usuario_logado is None:
             else:
                 st.warning("Preencha todos os campos!")
 
-    # --- ABA 2: CADASTRO ---
     with aba[1]:
         st.subheader("Crie seu Perfil")
         cad_user = st.text_input("Escolha um Nome de Usuário:", key="cad_user").strip()
@@ -74,7 +62,7 @@ if st.session_state.usuario_logado is None:
         if st.button("Cadastrar Conta 🎉", key="btn_cad"):
             if cad_user and cad_senha:
                 if codigo_convite != CHAVE_SECRETA:
-                    st.error("❌ Código de Convite incorreto! Você não tem permissão para se cadastrar.")
+                    st.error("❌ Código de Convite incorreto!")
                 else:
                     try:
                         url_foto = FOTO_PADRAO
@@ -90,98 +78,97 @@ if st.session_state.usuario_logado is None:
                             "url_foto_perfil": url_foto
                         }).execute()
                         
-                        st.success("Conta criada! Agora faça o login na primeira aba.")
+                        st.success("Conta criada! Faça o login na primeira aba.")
                     except Exception as e:
-                        st.error("Este nome de usuário já existe ou ocorreu um erro no servidor.")
+                        st.error("Este nome de usuário já existe ou ocorreu um erro.")
             else:
                 st.warning("Usuário e senha são obrigatórios!")
 
-# --- TELA DO CHAT PRINCIPAL ---
+# --- FLUXO PRINCIPAL APÓS LOGIN ---
 else:
     user_atual = st.session_state.usuario_logado
-    st.title("💬 Chat Oficial Profissional")
     
-    # Barra lateral com dados do perfil
-    st.sidebar.image(user_atual["url_foto_perfil"], width=100)
+    # Barra lateral de Perfil
+    st.sidebar.image(user_atual.get("url_foto_perfil") or FOTO_PADRAO, width=100)
     st.sidebar.write(f"Logado como: **{user_atual['username']}**")
+    
     if st.sidebar.button("Sair da Conta 🚪"):
         st.session_state.usuario_logado = None
+        st.session_state.sala_ativa = None
         st.rerun()
-        
-    st.markdown("---")
 
-    # --- ÁREA DE ENVIO DE MENSAGENS ---
-    with st.container():
-        txt_msg = st.text_input("Digite sua mensagem:", placeholder="Escreva algo aqui...", key="txt_msg_input")
-        upload_img = st.file_uploader("Enviar uma Imagem no Chat (Opcional):", type=["png", "jpg", "jpeg", "gif"], key=st.session_state.id_upload)
-        
-        if st.button("Enviar para a Galera ✉️", key="btn_enviar_mensagem"):
-            if txt_msg.strip() != "" or upload_img is not None:
-                try:
-                    url_img_enviada = None
-                    
-                    if upload_img:
-                        extensao = upload_img.name.split(".")[-1]
-                        nome_arquivo = f"chat/{uuid.uuid4()}.{extensao}"
-                        supabase.storage.from_("imagens_chat").upload(nome_arquivo, upload_img.read())
-                        url_img_enviada = supabase.storage.from_("imagens_chat").get_public_url(nome_arquivo)
-                    
-                    # Envia os dados para o Supabase
-                    supabase.table("bate-papo_profissional").insert({
-                        "id_usuario": user_atual["id"],
-                        "username": user_atual["username"],
-                        "url_foto_perfil": user_atual["url_foto_perfil"],
-                        "mensagem": txt_msg.strip() if txt_msg.strip() else None,
-                        "url_imagem_enviada": url_img_enviada
-                    }).execute()
-                    
-                    # Reseta o uploader mudando o ID para a foto não repetir
-                    st.session_state.id_upload = str(uuid.uuid4())
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error("Erro ao enviar a mensagem.")
-            else:
-                st.warning("Escreva um texto ou selecione uma imagem!")
-
-    st.markdown("---")
-    st.subheader("📋 Histórico do Chat")
-
-    # --- EXIBIÇÃO HISTÓRICO CORRIGIDA ---
-    try:
-        resposta = supabase.table("bate-papo_profissional").select("*").order("criado_em", desc=True).limit(40).execute()
-        
-        if resposta.data:
-            for msg in resposta.data:
-                # Criamos 3 colunas: Foto de perfil à esquerda, Mensagem ao centro, Lixeira à direita
-                col1, col2, col3 = st.columns([1, 5, 1])
-                
-                with col1:
-                    # RESOLVIDO: Aqui renderiza EXCLUSIVAMENTE a foto de perfil real do usuário
-                    foto_perfil_usuario = msg.get("url_foto_perfil") or FOTO_PADRAO
-                    st.image(foto_perfil_usuario, width=50)
-                
-                with col2:
-                    # Mostra o nome do usuário e o texto abaixo de forma limpa
-                    st.markdown(f"**{msg['username']}**")
-                    if msg.get("mensagem"):
-                        st.write(msg["mensagem"])
-                    
-                    # Se houver uma imagem anexada ao chat (e não a de perfil), ela aparece de forma correta aqui embaixo do texto
-                    if msg.get("url_imagem_enviada") and msg.get("url_imagem_enviada") != msg.get("url_foto_perfil"):
-                        st.image(msg["url_imagem_enviada"], use_container_width=True)
-                
-                with col3:
-                    # Segurança: Só o dono da mensagem vê a lixeira 🗑️
-                    if str(msg.get("id_usuario")) == str(user_atual["id"]):
-                        if st.button("🗑️", key=f"del_{msg['id']}"):
-                            apagar_mensagem(msg['id'])
-                            st.rerun()
-                            
-                st.markdown("---")
-        else:
-            st.write("Nenhuma mensagem por aqui. Seja o primeiro a falar!")
+    # --- SE O USUÁRIO JÁ ESTIVER DENTRO DE UMA SALA ---
+    if st.session_state.sala_ativa is not None:
+        st.title(f"💬 Sala: {st.session_state.sala_ativa}")
+        if st.button("⬅️ Voltar para o Menu Principal"):
+            st.session_state.sala_ativa = None
+            st.rerun()
             
-    except Exception as e:
-        st.write("Aguardando novas mensagens...")
-                           
+        st.write("*O histórico específico desta sala aparecerá aqui no próximo passo...*")
+
+    # --- SE O USUÁRIO ESTIVER NO MENU PRINCIPAL (AS 5 OPÇÕES) ---
+    else:
+        st.title("🎛️ Painel de Controle")
+        st.markdown("Escolha o que deseja fazer hoje:")
+        
+        # Criação das abas para as 5 opções do menu
+        menu = st.tabs([
+            "💬 Criar Conversa", 
+            "👨‍👩‍👦 Criar Grupo", 
+            "🔑 Entrar com Código",
+            "📋 Lista de Amigos", 
+            "➕ Adicionar Amigo"
+        ])
+        
+        # 1️⃣ ABA: CRIAR CONVERSA (1 PARA 1)
+        with menu[0]:
+            st.subheader("Iniciar Chat Privado")
+            st.caption("Selecione um amigo abaixo para abrir o chat particular.")
+            # Exemplo visual (será dinâmico)
+            st.selectbox("Escolha um amigo da lista:", ["Nenhum amigo online", "Exemplo_Amigo1", "Exemplo_Amigo2"])
+            if st.button("Abrir Conversa Particular 🚀"):
+                st.info("Função integrada em breve!")
+
+        # 2️⃣ ABA: CRIAR CONVERSA EM GRUPO
+        with menu[1]:
+            st.subheader("Criar Novo Grupo")
+            nome_novo_grupo = st.text_input("Nome do Grupo:", placeholder="Ex: Resenha do Fim de Semana")
+            st.multiselect("Selecione os amigos para adicionar ao grupo:", ["Amigo_1", "Amigo_2", "Amigo_3"])
+            if st.button("Criar e Gerar Código do Grupo 🎉"):
+                if nome_novo_grupo:
+                    codigo_gerado = str(uuid.uuid4())[:8].upper() # Gera um código curto de 8 dígitos
+                    st.success(f"Grupo criado! Compartilhe o código com os amigos: **{codigo_gerado}**")
+                else:
+                    st.warning("Digite um nome para o grupo!")
+
+        # 3️⃣ ABA: ENTRAR COM CÓDIGO DA SALA (A que você pediu!)
+        with menu[2]:
+            st.subheader("Entrar em uma Sala Existente")
+            st.markdown("Recebeu um código de grupo ou de uma conversa privada? Digite ele aqui para se juntar à conversa.")
+            codigo_digitado = st.text_input("Insira o Código da Sala:", placeholder="Ex: A8F2B9D1").strip().upper()
+            
+            if st.button("Entrar na Sala 🚪"):
+                if codigo_digitado:
+                    st.session_state.sala_ativa = codigo_digitado
+                    st.success(f"Entrando na sala {codigo_digitado}...")
+                    st.rerun()
+                else:
+                    st.warning("Por favor, digite um código válido.")
+
+        # 4️⃣ ABA: LISTA DE AMIGOS
+        with menu[3]:
+            st.subheader("Seus Amigos")
+            # Exemplo visual de como ficará listado
+            st.write("🟢 **Amigo_Exemplo_1** - *Disponível para conversar*")
+            st.write("🟡 **Amigo_Exemplo_2** - *Não incomodar*")
+
+        # 5️⃣ ABA: ADICIONAR AMIGO
+        with menu[4]:
+            st.subheader("Procurar Novos Amigos")
+            buscar_amigo = st.text_input("Digite o nome de usuário do seu amigo:", placeholder="Ex: Rafael_oficial_2").strip()
+            if st.button("Enviar Solicitação de Amizade ➕"):
+                if buscar_amigo:
+                    st.success(f"Solicitação enviada para **{buscar_amigo}**!")
+                else:
+                    st.warning("Digite um nome de usuário.")
+                    
