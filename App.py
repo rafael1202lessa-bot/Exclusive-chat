@@ -15,7 +15,6 @@ except Exception as e:
     st.error("Erro de conexão com o servidor.")
 
 # --- CHAVE DE CONVITE SECRETA ---
-# Altere a palavra entre aspas abaixo se quiser mudar a senha de cadastro!
 CHAVE_SECRETA = "ChatPrivado2026"
 
 # Foto padrão para quem não escolher uma foto de perfil
@@ -58,19 +57,15 @@ if st.session_state.usuario_logado is None:
         cad_user = st.text_input("Escolha um Nome de Usuário:", key="cad_user").strip()
         cad_senha = st.text_input("Crie uma Senha:", type="password", key="cad_senha")
         cad_foto = st.file_uploader("Escolha sua Foto de Perfil (Opcional):", type=["png", "jpg", "jpeg"], key="cad_foto")
-        
-        # CAMPO NOVO: Chave de convite para segurança
         codigo_convite = st.text_input("🔑 Código de Convite Secreto:", type="password", key="codigo_convite")
         
         if st.button("Cadastrar Conta 🎉", key="btn_cad"):
             if cad_user and cad_senha:
-                # Verifica se o código de convite está certo
                 if codigo_convite != CHAVE_SECRETA:
                     st.error("❌ Código de Convite incorreto! Você não tem permissão para se cadastrar.")
                 else:
                     try:
                         url_foto = FOTO_PADRAO
-                        
                         if cad_foto:
                             extensao = cad_foto.name.split(".")[-1]
                             nome_arquivo = f"perfis/{uuid.uuid4()}.{extensao}"
@@ -103,12 +98,13 @@ else:
         
     st.markdown("---")
 
-    # --- ENVIAR MENSAGEM OU FOTO ---
-    with st.container():
+    # --- ENVIAR MENSAGEM OU FOTO (COM RESET AUTOMÁTICO DO FORMULÁRIO) ---
+    with st.form(key="form_mensagem", clear_on_submit=True):
         txt_msg = st.text_input("Digite sua mensagem:", placeholder="Escreva algo aqui...")
         upload_img = st.file_uploader("Enviar uma Imagem no Chat (Opcional):", type=["png", "jpg", "jpeg", "gif"])
+        botao_enviar = st.form_submit_button(label="Enviar para a Galera ✉️")
         
-        if st.button("Enviar para a Galera ✉️"):
+        if botao_enviar:
             if txt_msg.strip() != "" or upload_img is not None:
                 try:
                     url_img_enviada = None
@@ -128,7 +124,7 @@ else:
                     }).execute()
                     st.rerun()
                 except Exception as e:
-                    st.error("Erro ao enviar. Verifique se o RLS das tabelas está desativado.")
+                    st.error("Erro ao enviar a mensagem.")
             else:
                 st.warning("Envie um texto ou selecione uma imagem!")
 
@@ -159,4 +155,4 @@ else:
             
     except Exception as e:
         st.write("Aguardando carregamento das conversas...")
-        
+    
