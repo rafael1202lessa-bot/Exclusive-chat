@@ -153,22 +153,22 @@ else:
         
         if resposta.data:
             for msg in resposta.data:
-                # Criamos 3 colunas: foto de perfil na esquerda, texto no meio, lixeira na direita
+                # Criamos 3 colunas: Foto de perfil à esquerda, Mensagem ao centro, Lixeira à direita
                 col1, col2, col3 = st.columns([1, 5, 1])
                 
                 with col1:
-                    # Carrega a foto de perfil correta de quem enviou a mensagem
-                    foto_user = msg.get("url_foto_perfil") or FOTO_PADRAO
-                    st.image(foto_user, width=50)
+                    # RESOLVIDO: Aqui renderiza EXCLUSIVAMENTE a foto de perfil real do usuário
+                    foto_perfil_usuario = msg.get("url_foto_perfil") or FOTO_PADRAO
+                    st.image(foto_perfil_usuario, width=50)
                 
                 with col2:
-                    # Exibe o Nome e o Texto organizados horizontalmente/verticalmente de forma limpa
+                    # Mostra o nome do usuário e o texto abaixo de forma limpa
                     st.markdown(f"**{msg['username']}**")
                     if msg.get("mensagem"):
                         st.write(msg["mensagem"])
                     
-                    # Se o usuário enviou uma imagem NO CHAT, ela aparece aqui embaixo do texto
-                    if msg.get("url_imagem_enviada"):
+                    # Se houver uma imagem anexada ao chat (e não a de perfil), ela aparece de forma correta aqui embaixo do texto
+                    if msg.get("url_imagem_enviada") and msg.get("url_imagem_enviada") != msg.get("url_foto_perfil"):
                         st.image(msg["url_imagem_enviada"], use_container_width=True)
                 
                 with col3:
@@ -184,4 +184,4 @@ else:
             
     except Exception as e:
         st.write("Aguardando novas mensagens...")
-                    
+                           
