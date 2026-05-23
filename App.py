@@ -76,8 +76,8 @@ if st.session_state.usuario_logado is None:
                         if cad_foto:
                             extensao = cad_foto.name.split(".")[-1]
                             nome_arquivo = f"perfis/{uuid.uuid4()}.{extensao}"
-                            supabase.storage.from("imagens_chat").upload(nome_arquivo, cad_foto.read())
-                            url_foto = supabase.storage.from("imagens_chat").get_public_url(nome_arquivo)
+                            supabase.storage.from_("imagens_chat").upload(nome_arquivo, cad_foto.read())
+                            url_foto = supabase.storage.from_("imagens_chat").get_public_url(nome_arquivo)
                         
                         supabase.table("perfis_usuarios").insert({
                             "username": cad_user,
@@ -122,8 +122,8 @@ else:
                         if upload_img:
                             extensao = upload_img.name.split(".")[-1]
                             nome_arquivo = f"chat/{uuid.uuid4()}.{extensao}"
-                            supabase.storage.from("imagens_chat").upload(nome_arquivo, upload_img.read())
-                            url_img_enviada = supabase.storage.from("imagens_chat").get_public_url(nome_arquivo)
+                            supabase.storage.from_("imagens_chat").upload(nome_arquivo, upload_img.read())
+                            url_img_enviada = supabase.storage.from_("imagens_chat").get_public_url(nome_arquivo)
                         
                         supabase.table("bate-papo_profissional").insert({
                             "id_usuario": user_atual["id"],
@@ -207,7 +207,7 @@ else:
             except:
                 st.write("Erro ao carregar amigos.")
 
-        # 2️⃣ CRIAR GRUPO (ALTERADO PARA MOSTRAR O ERRO REAL)
+        # 2️⃣ CRIAR GRUPO
         with menu[1]:
             st.subheader("Criar Novo Grupo")
             nome_novo_grupo = st.text_input("Nome do Grupo:", placeholder="Ex: Resenha da Galera")
@@ -291,4 +291,4 @@ else:
                         st.error("Erro ao processar solicitação.")
                 else:
                     st.warning("Digite um nome de usuário.")
-                            
+        
