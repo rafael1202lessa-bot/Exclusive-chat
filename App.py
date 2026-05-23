@@ -24,10 +24,6 @@ FOTO_PADRAO = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
 if "usuario_logado" not in st.session_state:
     st.session_state.usuario_logado = None
 
-# Chave dinâmica para resetar o uploader de foto do chat
-if "id_upload" not in st.session_state:
-    st.session_state.id_upload = str(uuid.uuid4())
-
 # --- FUNÇÃO PARA APAGAR MENSAGEM ---
 def apagar_mensagem(id_mensagem):
     try:
@@ -110,10 +106,10 @@ else:
         
     st.markdown("---")
 
-    # --- ÁREA DE ENVIO DE MENSAGENS ---
+    # --- ÁREA DE ENVIO DE MENSAGENS NO CHAT ---
     with st.container():
         txt_msg = st.text_input("Digite sua mensagem:", placeholder="Escreva algo aqui...", key="txt_msg_input")
-        upload_img = st.file_uploader("Enviar uma Imagem no Chat (Opcional):", type=["png", "jpg", "jpeg", "gif"], key=st.session_state.id_upload)
+        upload_img = st.file_uploader("Enviar uma Imagem no Chat (Opcional):", type=["png", "jpg", "jpeg", "gif"], key="img_chat_input")
         
         if st.button("Enviar para a Galera ✉️", key="btn_enviar_mensagem"):
             if txt_msg.strip() != "" or upload_img is not None:
@@ -135,10 +131,7 @@ else:
                         "url_imagem_enviada": url_img_enviada
                     }).execute()
                     
-                    # Reseta o uploader mudando o ID para a foto não repetir
-                    st.session_state.id_upload = str(uuid.uuid4())
-                    
-                    # Atualiza a página instantaneamente
+                    # Força a atualização da página para carregar e limpar
                     st.rerun()
                     
                 except Exception as e:
@@ -155,7 +148,6 @@ else:
         
         if resposta.data:
             for msg in resposta.data:
-                # Criamos colunas: foto, conteúdo da mensagem, botão apagar
                 col1, col2, col3 = st.columns([1, 5, 1])
                 
                 with col1:
@@ -170,7 +162,7 @@ else:
                         st.image(msg["url_imagem_enviada"], use_container_width=True)
                 
                 with col3:
-                    # Segurança: Só o dono da mensagem vê o botão🗑️
+                    # Só o dono da mensagem consegue ver e clicar na lixeira 🗑️
                     if str(msg.get("id_usuario")) == str(user_atual["id"]):
                         if st.button("🗑️", key=f"del_{msg['id']}"):
                             apagar_mensagem(msg['id'])
@@ -182,4 +174,4 @@ else:
             
     except Exception as e:
         st.write("Aguardando novas mensagens...")
-            
+                    
