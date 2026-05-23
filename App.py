@@ -24,6 +24,10 @@ FOTO_PADRAO = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
 if "usuario_logado" not in st.session_state:
     st.session_state.usuario_logado = None
 
+# Cria um "gerador de chaves" para resetar o campo de upload de imagem
+if "id_upload" not in st.session_state:
+    st.session_state.id_upload = str(uuid.uuid4())
+
 # --- TELA DE AUTENTICAÇÃO (LOGIN / CADASTRO) ---
 if st.session_state.usuario_logado is None:
     st.title("🔐 Bem-vindo ao Super Chat")
@@ -98,13 +102,14 @@ else:
         
     st.markdown("---")
 
-    # --- ENVIAR MENSAGEM OU FOTO (COM RESET AUTOMÁTICO DO FORMULÁRIO) ---
-    with st.form(key="form_mensagem", clear_on_submit=True):
-        txt_msg = st.text_input("Digite sua mensagem:", placeholder="Escreva algo aqui...")
-        upload_img = st.file_uploader("Enviar uma Imagem no Chat (Opcional):", type=["png", "jpg", "jpeg", "gif"])
-        botao_enviar = st.form_submit_button(label="Enviar para a Galera ✉️")
+    # --- ENVIAR MENSAGEM OU FOTO ---
+    with st.container():
+        txt_msg = st.text_input("Digite sua mensagem:", placeholder="Escreva algo aqui...", key="input_mensagem")
         
-        if botao_enviar:
+        # O uploader usa uma chave dinâmica. Quando mudamos a chave, ele limpa o arquivo automaticamente!
+        upload_img = st.file_uploader("Enviar uma Imagem no Chat (Opcional):", type=["png", "jpg", "jpeg", "gif"], key=st.session_state.id_upload)
+        
+        if st.button("Enviar para a Galera ✉️", key="btn_enviar_chat"):
             if txt_msg.strip() != "" or upload_img is not None:
                 try:
                     url_img_enviada = None
@@ -115,6 +120,7 @@ else:
                         supabase.storage.from_("imagens_chat").upload(nome_arquivo, upload_img.read())
                         url_img_enviada = supabase.storage.from_("imagens_chat").get_public_url(nome_arquivo)
                     
+                    # Envia para o banco de dados
                     supabase.table("bate-papo_profissional").insert({
                         "id_usuario": user_atual["id"],
                         "username": user_atual["username"],
@@ -122,6 +128,11 @@ else:
                         "mensagem": txt_msg.strip() if txt_msg.strip() else None,
                         "url_imagem_enviada": url_img_enviada
                     }).execute()
+                    
+                    # Força a caixinha de foto a esquecer a imagem antiga gerando um novo ID
+                    st.session_state.id_upload = str(uuid.uuid4())
+                    
+                    # Atualiza a tela para mostrar a mensagem na hora
                     st.rerun()
                 except Exception as e:
                     st.error("Erro ao enviar a mensagem.")
@@ -155,4 +166,4 @@ else:
             
     except Exception as e:
         st.write("Aguardando carregamento das conversas...")
-    
+                    
