@@ -16,7 +16,7 @@ except Exception as e:
 # --- DEFINIÇÃO DA SENHA DE SEGURANÇA ---
 SENHA_CORRETA = "galera123" 
 
-# Controle de sessão (se está logado ou não)
+# Controle de sessão
 if "logado" not in st.session_state:
     st.session_state.logado = False
 if "nome_usuario" not in st.session_state:
@@ -45,7 +45,6 @@ else:
     st.title("💬 Chat Oficial da Galera")
     st.write(f"Conectado como: **{st.session_state.nome_usuario}**")
     
-    # Botão para deslogar com segurança
     if st.sidebar.button("Sair do Chat 🚪"):
         st.session_state.logado = False
         st.session_state.nome_usuario = ""
@@ -57,37 +56,20 @@ else:
         if st.button("Enviar Mensagem ✉️"):
             if nova_msg.strip() != "":
                 try:
-                    # Envia para a tabela correta 'bate-papo_geral'
                     supabase.table("bate-papo_geral").insert({
                         "usuario": st.session_state.nome_usuario,
                         "mensagem": nova_msg.strip()
                     }).execute()
                     st.rerun()
                 except Exception as e:
-                    try:
-                        # Tentativa 2: Caso o tradutor do navegador tenha criado como 'usuario text'
-                        supabase.table("bate-papo_geral").insert({
-                            "usuario text": st.session_state.nome_usuario,
-                            "mensagem": nova_msg.strip()
-                        }).execute()
-                        st.rerun()
-                    except Exception as e2:
-                        try:
-                            # Tentativa 3: Caso tenha mudado mensagem para 'mensagem text' também
-                            supabase.table("bate-papo_geral").insert({
-                                "usuario text": st.session_state.nome_usuario,
-                                "mensagem text": nova_msg.strip()
-                            }).execute()
-                            st.rerun()
-                        except Exception as e3:
-                            st.error("Erro na estrutura da tabela do Supabase. Verifique se o RLS está desativado.")
+                    st.error("Erro ao enviar. Verifique se desativou o RLS no Supabase.")
             else:
                 st.warning("Não é possível enviar uma mensagem vazia!")
 
     st.markdown("---")
     st.subheader("📋 Mensagens Recentes")
 
-    # --- ÁREA DE EXIBIÇÃO DAS MENSAGENS ---
+    # --- ÁREA DE EXIBIÇÃO ---
     try:
         resposta = supabase.table("bate-papo_geral").select("*").order("criado_em", desc=True).limit(50).execute()
         
@@ -95,16 +77,13 @@ else:
             for msg in resposta.data:
                 data_hora = msg['criado_em'].split("T")[1][:5] if 'criado_em' in msg and "T" in msg['criado_em'] else ""
                 
-                if msg.get('usuario') == st.session_state.nome_usuario or msg.get('usuario text') == st.session_state.nome_usuario:
-                    texto_msg = msg.get('mensagem') or msg.get('mensagem text') or ""
-                    st.markdown(f"🔹 **Você** [{data_hora}]: {texto_msg}")
+                if msg.get('usuario') == st.session_state.nome_usuario:
+                    st.markdown(f"🔹 **Você** [{data_hora}]: {msg.get('mensagem')}")
                 else:
-                    usuario_nome = msg.get('usuario') or msg.get('usuario text') or "Usuário"
-                    texto_msg = msg.get('mensagem') or msg.get('mensagem text') or ""
-                    st.markdown(f"👤 **{usuario_nome}** [{data_hora}]: {texto_msg}")
+                    st.markdown(f"👤 **{msg.get('usuario')}** [{data_hora}]: {msg.get('mensagem')}")
         else:
             st.write("Nenhuma mensagem por aqui ainda. Comece a conversar!")
             
     except Exception as e:
-        st.write("Aguardando novas mensagens...")
+        st.write("Aguardando conexão com o banco de dados...")
         
