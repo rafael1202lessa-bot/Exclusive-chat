@@ -9,12 +9,8 @@ st.set_page_config(page_title="Super Chat da Galera", page_icon="💬", layout="
 SUPABASE_URL = "https://ldjtqgeyorkzbvuichjj.supabase.co"
 SUPABASE_KEY = "sb_publishable_ZWY9Hp6kQrhOzff6xc_DrA_8TlnrqQ_"
 
-@st.cache_resource
-def init_connection():
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
-
 try:
-    supabase: Client = init_connection()
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 except Exception as e:
     st.error("Erro de conexão com o servidor.")
 
@@ -22,7 +18,7 @@ except Exception as e:
 CHAVE_SECRETA = "ChatPrivado2026"
 FOTO_PADRAO = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
 
-# Inicialização de sessões (State)
+# Inicialização de sessões
 if "usuario_logado" not in st.session_state:
     st.session_state.usuario_logado = None
 if "sala_ativa" not in st.session_state:
@@ -38,7 +34,7 @@ def apagar_mensagem(id_mensagem):
     except Exception as e:
         st.error("Erro ao deletar a mensagem.")
 
-# --- TELA DE AUTENTICAÇÃO (LOGIN / CADASTRO) ---
+# --- TELA DE AUTENTICAÇÃO ---
 if st.session_state.usuario_logado is None:
     st.title("🔐 Bem-vindo ao Super Chat")
     aba = st.tabs(["Fazer Login", "Criar Nova Conta"])
@@ -80,8 +76,8 @@ if st.session_state.usuario_logado is None:
                         if cad_foto:
                             extensao = cad_foto.name.split(".")[-1]
                             nome_arquivo = f"perfis/{uuid.uuid4()}.{extensao}"
-                            supabase.storage.from_("imagens_chat").upload(nome_arquivo, cad_foto.read())
-                            url_foto = supabase.storage.from_("imagens_chat").get_public_url(nome_arquivo)
+                            supabase.storage.from("imagens_chat").upload(nome_arquivo, cad_foto.read())
+                            url_foto = supabase.storage.from("imagens_chat").get_public_url(nome_arquivo)
                         
                         supabase.table("perfis_usuarios").insert({
                             "username": cad_user,
@@ -94,11 +90,9 @@ if st.session_state.usuario_logado is None:
             else:
                 st.warning("Usuário e senha são obrigatórios!")
 
-# --- FLUXO PRINCIPAL APÓS LOGIN ---
 else:
     user_atual = st.session_state.usuario_logado
     
-    # Barra lateral de Perfil
     st.sidebar.image(user_atual.get("url_foto_perfil") or FOTO_PADRAO, width=100)
     st.sidebar.write(f"Logado como: **{user_atual['username']}**")
     if st.sidebar.button("Sair da Conta 🚪"):
@@ -106,7 +100,7 @@ else:
         st.session_state.sala_ativa = None
         st.rerun()
 
-    # --- TELA INTERNA DO CHAT (SALA ATIVA) ---
+    # --- TELA INTERNA DO CHAT ---
     if st.session_state.sala_ativa is not None:
         st.title(f"💬 Sala Ativa")
         st.code(f"Código da Sala: {st.session_state.sala_ativa}")
@@ -117,7 +111,6 @@ else:
             
         st.markdown("---")
 
-        # Área de Envio de Mensagem para a Sala específica
         with st.container():
             txt_msg = st.text_input("Digite sua mensagem:", placeholder="Escreva algo aqui...", key="txt_msg_input")
             upload_img = st.file_uploader("Enviar uma Imagem (Opcional):", type=["png", "jpg", "jpeg", "gif"], key=st.session_state.id_upload)
@@ -129,8 +122,8 @@ else:
                         if upload_img:
                             extensao = upload_img.name.split(".")[-1]
                             nome_arquivo = f"chat/{uuid.uuid4()}.{extensao}"
-                            supabase.storage.from_("imagens_chat").upload(nome_arquivo, upload_img.read())
-                            url_img_enviada = supabase.storage.from_("imagens_chat").get_public_url(nome_arquivo)
+                            supabase.storage.from("imagens_chat").upload(nome_arquivo, upload_img.read())
+                            url_img_enviada = supabase.storage.from("imagens_chat").get_public_url(nome_arquivo)
                         
                         supabase.table("bate-papo_profissional").insert({
                             "id_usuario": user_atual["id"],
@@ -151,7 +144,6 @@ else:
         st.markdown("---")
         st.subheader("📋 Histórico da Sala")
 
-        # Exibição do histórico filtrado pelo código da sala ativa
         try:
             resposta = supabase.table("bate-papo_profissional").select("*").eq("codigo_sala", st.session_state.sala_ativa).order("criado_em", desc=True).limit(40).execute()
             if resposta.data:
@@ -174,9 +166,9 @@ else:
             else:
                 st.write("Nenhuma mensagem por aqui ainda.")
         except Exception as e:
-            st.write("Nenhuma mensagem registrada nesta sala.")
+            st.write("Erro ao carregar o histórico.")
 
-    # --- TELA DO MENU PRINCIPAL (AS 5 OPÇÕES) ---
+    # --- TELA DO MENU PRINCIPAL ---
     else:
         st.title("🎛️ Painel de Controle")
         menu = st.tabs([
@@ -187,7 +179,7 @@ else:
             "➕ Adicionar Amigo"
         ])
         
-        # 1️⃣ CRIAR CONVERSA (1 PARA 1)
+        # 1️⃣ CRIAR CONVERSA
         with menu[0]:
             st.subheader("Iniciar Chat Privado")
             try:
@@ -215,7 +207,7 @@ else:
             except:
                 st.write("Erro ao carregar amigos.")
 
-        # 2️⃣ CRIAR CONVERSA EM GRUPO
+        # 2️⃣ CRIAR GRUPO (ALTERADO PARA MOSTRAR O ERRO REAL)
         with menu[1]:
             st.subheader("Criar Novo Grupo")
             nome_novo_grupo = st.text_input("Nome do Grupo:", placeholder="Ex: Resenha da Galera")
@@ -225,13 +217,13 @@ else:
                     try:
                         supabase.table("salas_chat").insert({"codigo_sala": novo_codigo, "nome_sala": nome_novo_grupo, "tipo": "grupo"}).execute()
                         supabase.table("membros_salas").insert({"codigo_sala": novo_codigo, "id_usuario": user_atual["id"]}).execute()
-                        st.success(f"Grupo criado! Compartilhe o código com os amigos: **{novo_codigo}**")
-                    except:
-                        st.error("Erro ao registrar grupo.")
+                        st.success(f"Grupo criado! Código: **{novo_codigo}**")
+                    except Exception as erro_banco:
+                        st.error(f"Erro detalhado do Supabase: {erro_banco}")
                 else:
                     st.warning("Digite um nome para o grupo!")
 
-        # 3️⃣ ENTRAR COM CÓDIGO DA SALA
+        # 3️⃣ ENTRAR COM CÓDIGO
         with menu[2]:
             st.subheader("Entrar em uma Sala Existente")
             codigo_digitado = st.text_input("Insira o Código da Sala:", placeholder="Ex: GRUPO-A8F2B9D1").strip().upper()
@@ -272,7 +264,7 @@ else:
                 else:
                     st.caption("Você ainda não tem amigos adicionados.")
             except:
-                st.caption("Nenhum amigo adicionado ainda.")
+                st.caption("Erro ao carregar lista.")
 
         # 5️⃣ ADICIONAR AMIGO
         with menu[4]:
@@ -299,4 +291,4 @@ else:
                         st.error("Erro ao processar solicitação.")
                 else:
                     st.warning("Digite um nome de usuário.")
-        
+                            
