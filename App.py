@@ -81,7 +81,6 @@ if st.session_state.usuario_logado is None:
                         if cad_foto:
                             extensao = cad_foto.name.split(".")[-1]
                             nome_arquivo = f"perfis/{uuid.uuid4()}.{extensao}"
-                            # Corrigido para .from_() com underline
                             supabase.storage.from_("imagens_chat").upload(nome_arquivo, cad_foto.read())
                             url_foto = supabase.storage.from_("imagens_chat").get_public_url(nome_arquivo)
                         
@@ -124,7 +123,6 @@ else:
                     if upload_img:
                         extensao = upload_img.name.split(".")[-1]
                         nome_arquivo = f"chat/{uuid.uuid4()}.{extensao}"
-                        # Corrigido para .from_() com underline
                         supabase.storage.from_("imagens_chat").upload(nome_arquivo, upload_img.read())
                         url_img_enviada = supabase.storage.from_("imagens_chat").get_public_url(nome_arquivo)
                     
@@ -139,7 +137,6 @@ else:
                     
                     # Reseta o uploader mudando o ID para a foto não repetir
                     st.session_state.id_upload = str(uuid.uuid4())
-                    
                     st.rerun()
                     
                 except Exception as e:
@@ -150,27 +147,32 @@ else:
     st.markdown("---")
     st.subheader("📋 Histórico do Chat")
 
-    # --- EXIBIÇÃO HISTÓRICO COM BOTÃO DE APAGAR ---
+    # --- EXIBIÇÃO HISTÓRICO CORRIGIDA ---
     try:
         resposta = supabase.table("bate-papo_profissional").select("*").order("criado_em", desc=True).limit(40).execute()
         
         if resposta.data:
             for msg in resposta.data:
+                # Criamos 3 colunas: foto de perfil na esquerda, texto no meio, lixeira na direita
                 col1, col2, col3 = st.columns([1, 5, 1])
                 
                 with col1:
+                    # Carrega a foto de perfil correta de quem enviou a mensagem
                     foto_user = msg.get("url_foto_perfil") or FOTO_PADRAO
-                    st.image(foto_user, width=45)
+                    st.image(foto_user, width=50)
                 
                 with col2:
+                    # Exibe o Nome e o Texto organizados horizontalmente/verticalmente de forma limpa
                     st.markdown(f"**{msg['username']}**")
                     if msg.get("mensagem"):
                         st.write(msg["mensagem"])
+                    
+                    # Se o usuário enviou uma imagem NO CHAT, ela aparece aqui embaixo do texto
                     if msg.get("url_imagem_enviada"):
                         st.image(msg["url_imagem_enviada"], use_container_width=True)
                 
                 with col3:
-                    # Segurança: Só o dono vê a lixeira 🗑️
+                    # Segurança: Só o dono da mensagem vê a lixeira 🗑️
                     if str(msg.get("id_usuario")) == str(user_atual["id"]):
                         if st.button("🗑️", key=f"del_{msg['id']}"):
                             apagar_mensagem(msg['id'])
@@ -182,4 +184,4 @@ else:
             
     except Exception as e:
         st.write("Aguardando novas mensagens...")
-            
+                    
