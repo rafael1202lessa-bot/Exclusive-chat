@@ -24,9 +24,58 @@ FOTO_PADRAO = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
 if "usuario_logado" not in st.session_state:
     st.session_state.usuario_logado = None
 
-# Cria um "gerador de chaves" para resetar o campo de upload de imagem
+# Cria um gerador de chaves para resetar o campo de upload de imagem
 if "id_upload" not in st.session_state:
     st.session_state.id_upload = str(uuid.uuid4())
+
+# --- FUNÇÃO PARA APAGAR UMA MENSAGEM ---
+def apagar_mensagem(id_mensagem):
+    try:
+        supabase.table("bate-papo_profissional").delete().eq("id", id_mensagem).execute()
+        # Não precisa de st.rerun aqui porque o clique no botão já recarrega a página por padrão
+    except Exception as e:
+        st.error("Erro ao deletar a mensagem no banco de dados.")
+
+# --- FUNÇÃO DE CALLBACK PARA ENVIAR MENSAGEM ---
+def enviar_mensagem_chat():
+    msg_texto = st.session_state.get("txt_msg_temp", "").strip()
+    msg_foto = st.session_state.get("upload_img_temp", None)
+    user_atual = st.session_state.usuario_logado
+    
+    # Se o file_uploader tiver um arquivo, precisamos ler ele antes de limpar o formulário
+    # O Streamlit às vezes perde a referência do arquivo no callback 'clear_on_submit'
+    # Por isso, vamos guardar os bytes na sessão se houver imagem
+    if msg_foto:
+        st.session_state["foto_bytes_temp"] = msg_foto.read()
+        st.session_state["foto_nome_temp"] = msg_foto.name
+    else:
+        st.session_state["foto_bytes_temp"] = None
+
+    foto_bytes = st.session_state.get("foto_bytes_temp", None)
+    
+    if msg_texto != "" or foto_bytes is not None:
+        try:
+            url_img_enviada = None
+            
+            if foto_bytes:
+                extensao = st.session_state["foto_nome_temp"].split(".")[-1]
+                nome_arquivo = f"chat/{uuid.uuid4()}.{extensao}"
+                supabase.storage.from_("imagens_chat").upload(nome_arquivo, foto_bytes)
+                url_img_enviada = supabase.storage.from_("imagens_chat").get_public_url(nome_arquivo)
+            
+            supabase.table("bate-papo_profissional").insert({
+                "id_usuario": user_atual["id"],
+                "username": user_atual["username"],
+                "url_foto_perfil": user_atual["url_foto_perfil"],
+                "mensagem": msg_texto if msg_texto else None,
+                "url_imagem_enviada": url_img_enviada
+            }).execute()
+            
+            # Força o campo de foto a limpar gerando uma nova chave
+            st.session_state.id_upload = str(uuid.uuid4())
+            
+        except Exception as e:
+            st.error("Erro ao enviar para o banco de dados.")
 
 # --- TELA DE AUTENTICAÇÃO (LOGIN / CADASTRO) ---
 if st.session_state.usuario_logado is None:
@@ -103,52 +152,23 @@ else:
     st.markdown("---")
 
     # --- ENVIAR MENSAGEM OU FOTO ---
-    with st.container():
-        txt_msg = st.text_input("Digite sua mensagem:", placeholder="Escreva algo aqui...", key="input_mensagem")
+    with st.form(key="form_chat_novo", clear_on_submit=True):
+        st.text_input("Digite sua mensagem:", placeholder="Escreva algo aqui...", key="txt_msg_temp")
+        st.file_uploader("Enviar uma Imagem no Chat (Opcional):", type=["png", "jpg", "jpeg", "gif"], key=st.session_state.id_upload, name="upload_img_temp")
         
-        # O uploader usa uma chave dinâmica. Quando mudamos a chave, ele limpa o arquivo automaticamente!
-        upload_img = st.file_uploader("Enviar uma Imagem no Chat (Opcional):", type=["png", "jpg", "jpeg", "gif"], key=st.session_state.id_upload)
-        
-        if st.button("Enviar para a Galera ✉️", key="btn_enviar_chat"):
-            if txt_msg.strip() != "" or upload_img is not None:
-                try:
-                    url_img_enviada = None
-                    
-                    if upload_img:
-                        extensao = upload_img.name.split(".")[-1]
-                        nome_arquivo = f"chat/{uuid.uuid4()}.{extensao}"
-                        supabase.storage.from_("imagens_chat").upload(nome_arquivo, upload_img.read())
-                        url_img_enviada = supabase.storage.from_("imagens_chat").get_public_url(nome_arquivo)
-                    
-                    # Envia para o banco de dados
-                    supabase.table("bate-papo_profissional").insert({
-                        "id_usuario": user_atual["id"],
-                        "username": user_atual["username"],
-                        "url_foto_perfil": user_atual["url_foto_perfil"],
-                        "mensagem": txt_msg.strip() if txt_msg.strip() else None,
-                        "url_imagem_enviada": url_img_enviada
-                    }).execute()
-                    
-                    # Força a caixinha de foto a esquecer a imagem antiga gerando um novo ID
-                    st.session_state.id_upload = str(uuid.uuid4())
-                    
-                    # Atualiza a tela para mostrar a mensagem na hora
-                    st.rerun()
-                except Exception as e:
-                    st.error("Erro ao enviar a mensagem.")
-            else:
-                st.warning("Envie um texto ou selecione uma imagem!")
+        st.form_submit_button(label="Enviar para a Galera ✉️", on_click=enviar_mensagem_chat)
 
     st.markdown("---")
     st.subheader("📋 Histórico do Chat")
 
-    # --- EXIBIÇÃO DAS MENSAGENS COM FOTO DE PERFIL ---
+    # --- EXIBIÇÃO DAS MENSAGENS COM BOTOES DE DELETAR ---
     try:
         resposta = supabase.table("bate-papo_profissional").select("*").order("criado_em", desc=True).limit(40).execute()
         
         if resposta.data:
             for msg in resposta.data:
-                col1, col2 = st.columns([1, 6])
+                # Criamos 3 colunas: 1 para foto de perfil, 1 para o conteúdo e 1 para o botão de apagar
+                col1, col2, col3 = st.columns([1, 5, 1])
                 
                 with col1:
                     foto_user = msg.get("url_foto_perfil") or FOTO_PADRAO
@@ -160,10 +180,16 @@ else:
                         st.write(msg["mensagem"])
                     if msg.get("url_imagem_enviada"):
                         st.image(msg["url_imagem_enviada"], use_container_width=True)
+                
+                with col3:
+                    # SEGURANÇA: Só mostra o botão se a mensagem for do próprio usuário logado
+                    if str(msg.get("id_usuario")) == str(user_atual["id"]):
+                        st.button("🗑️", key=f"del_{msg['id']}", on_click=apagar_mensagem, args=(msg['id'],))
+                        
                 st.markdown("---")
         else:
             st.write("Nenhuma mensagem por aqui. Seja o primeiro a falar!")
             
     except Exception as e:
         st.write("Aguardando carregamento das conversas...")
-                    
+    
