@@ -1,8 +1,9 @@
 import streamlit as st
 from supabase import create_client, Client
+import uuid
 
 # Configuração da página do Chat
-st.set_page_config(page_title="Chat Privado da Galera", page_icon="💬", layout="centered")
+st.set_page_config(page_title="Super Chat da Galera", page_icon="💬", layout="centered")
 
 # --- CONEXÃO COM O SEU BANCO DE DADOS ---
 SUPABASE_URL = "https://ldjtqgeyorkzbvuichjj.supabase.co"
@@ -13,77 +14,137 @@ try:
 except Exception as e:
     st.error("Erro de conexão com o servidor.")
 
-# --- DEFINIÇÃO DA SENHA DE SEGURANÇA ---
-SENHA_CORRETA = "galera123" 
+# Foto padrão para quem não escolher uma foto de perfil
+FOTO_PADRAO = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
 
-# Controle de sessão
-if "logado" not in st.session_state:
-    st.session_state.logado = False
-if "nome_usuario" not in st.session_state:
-    st.session_state.nome_usuario = ""
+# Controle de sessão (gerenciamento de login)
+if "usuario_logado" not in st.session_state:
+    st.session_state.usuario_logado = None
 
-# --- TELA 1: BARREIRA DE SEGURANÇA ---
-if not st.session_state.logado:
-    st.title("🔒 Chat Privado")
-    st.markdown("Este é um espaço seguro e restrito. Digite suas credenciais para entrar.")
+# --- TELA DE AUTENTICAÇÃO (LOGIN / CADASTRO) ---
+if st.session_state.usuario_logado is None:
+    st.title("🔐 Bem-vindo ao Super Chat")
     
-    nome = st.text_input("Seu Nome ou Apelido:", placeholder="Ex: Luccas").strip()
-    senha_digitada = st.text_input("Senha de Acesso do Grupo:", type="password", placeholder="Digite a senha secreta")
+    aba = st.tabs(["Fazer Login", "Criar Nova Conta"])
     
-    if st.button("Entrar no Chat 🚀"):
-        if nome == "" or senha_digitada == "":
-            st.error("Por favor, preencha todos os campos!")
-        elif senha_digitada != SENHA_CORRETA:
-            st.error("Senha incorreta! Acesso negado.")
-        else:
-            st.session_state.logado = True
-            st.session_state.nome_usuario = nome
-            st.rerun()
-
-# --- TELA 2: O CHAT DE CONVERSAS ---
-else:
-    st.title("💬 Chat Oficial da Galera")
-    st.write(f"Conectado como: **{st.session_state.nome_usuario}**")
-    
-    if st.sidebar.button("Sair do Chat 🚪"):
-        st.session_state.logado = False
-        st.session_state.nome_usuario = ""
-        st.rerun()
-
-    # --- CAMPO PARA ENVIAR MENSAGEM ---
-    with st.container():
-        nova_msg = st.text_input("Digite sua mensagem:", placeholder="Escreva aqui...", key="campo_texto")
-        if st.button("Enviar Mensagem ✉️"):
-            if nova_msg.strip() != "":
+    # --- ABA 1: LOGIN ---
+    with aba[0]:
+        st.subheader("Acesse sua Conta")
+        login_user = st.text_input("Usuário:", key="login_user").strip()
+        login_senha = st.text_input("Senha:", type="password", key="login_senha")
+        
+        if st.button("Entrar 🚀", key="btn_login"):
+            if login_user and login_senha:
                 try:
-                    supabase.table("bate-papo_geral").insert({
-                        "usuario": st.session_state.nome_usuario,
-                        "mensagem": nova_msg.strip()
+                    busca = supabase.table("perfis_usuarios").select("*").eq("username", login_user).execute()
+                    if busca.data and busca.data[0]["senha"] == login_senha:
+                        st.session_state.usuario_logado = busca.data[0]
+                        st.success("Login realizado com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error("Usuário ou senha incorretos.")
+                except Exception as e:
+                    st.error("Erro ao conectar ao banco de dados.")
+            else:
+                st.warning("Preencha todos os campos!")
+
+    # --- ABA 2: CADASTRO ---
+    with aba[1]:
+        st.subheader("Crie seu Perfil")
+        cad_user = st.text_input("Escolha um Nome de Usuário:", key="cad_user").strip()
+        cad_senha = st.text_input("Crie uma Senha:", type="password", key="cad_senha")
+        cad_foto = st.file_uploader("Escolha sua Foto de Perfil (Opcional):", type=["png", "jpg", "jpeg"], key="cad_foto")
+        
+        if st.button("Cadastrar Conta 🎉", key="btn_cad"):
+            if cad_user and cad_senha:
+                try:
+                    url_foto = FOTO_PADRAO
+                    
+                    if cad_foto:
+                        extensao = cad_foto.name.split(".")[-1]
+                        nome_arquivo = f"perfis/{uuid.uuid4()}.{extensao}"
+                        supabase.storage.from_("imagens_chat").upload(nome_arquivo, cad_foto.read())
+                        url_foto = supabase.storage.from_("imagens_chat").get_public_url(nome_arquivo)
+                    
+                    supabase.table("perfis_usuarios").insert({
+                        "username": cad_user,
+                        "senha": cad_senha,
+                        "url_foto_perfil": url_foto
+                    }).execute()
+                    
+                    st.success("Conta criada! Agora faça o login na primeira aba.")
+                except Exception as e:
+                    st.error("Este nome de usuário já existe ou ocorreu um erro no servidor.")
+            else:
+                st.warning("Usuário e senha são obrigatórios!")
+
+# --- TELA DO CHAT PRINCIPAL ---
+else:
+    user_atual = st.session_state.usuario_logado
+    st.title("💬 Chat Oficial Profissional")
+    
+    # Barra lateral com dados do perfil
+    st.sidebar.image(user_atual["url_foto_perfil"], width=100)
+    st.sidebar.write(f"Logado como: **{user_atual['username']}**")
+    if st.sidebar.button("Sair da Conta 🚪"):
+        st.session_state.usuario_logado = None
+        st.rerun()
+        
+    st.markdown("---")
+
+    # --- ENVIAR MENSAGEM OU FOTO ---
+    with st.container():
+        txt_msg = st.text_input("Digite sua mensagem:", placeholder="Escreva algo aqui...")
+        upload_img = st.file_uploader("Enviar uma Imagem no Chat (Opcional):", type=["png", "jpg", "jpeg", "gif"])
+        
+        if st.button("Enviar para a Galera ✉️"):
+            if txt_msg.strip() != "" or upload_img is not None:
+                try:
+                    url_img_enviada = None
+                    
+                    if upload_img:
+                        extensao = upload_img.name.split(".")[-1]
+                        nome_arquivo = f"chat/{uuid.uuid4()}.{extensao}"
+                        supabase.storage.from_("imagens_chat").upload(nome_arquivo, upload_img.read())
+                        url_img_enviada = supabase.storage.from_("imagens_chat").get_public_url(nome_arquivo)
+                    
+                    supabase.table("bate-papo_profissional").insert({
+                        "id_usuario": user_atual["id"],
+                        "username": user_atual["username"],
+                        "url_foto_perfil": user_atual["url_foto_perfil"],
+                        "mensagem": txt_msg.strip() if txt_msg.strip() else None,
+                        "url_imagem_enviada": url_img_enviada
                     }).execute()
                     st.rerun()
                 except Exception as e:
-                    st.error("Erro ao enviar. Verifique se desativou o RLS no Supabase.")
+                    st.error("Erro ao enviar. Verifique se o RLS das tabelas está desativado.")
             else:
-                st.warning("Não é possível enviar uma mensagem vazia!")
+                st.warning("Envie um texto ou selecione uma imagem!")
 
     st.markdown("---")
-    st.subheader("📋 Mensagens Recentes")
+    st.subheader("📋 Histórico do Chat")
 
-    # --- ÁREA DE EXIBIÇÃO ---
+    # --- EXIBIÇÃO DAS MENSAGENS COM FOTO DE PERFIL ---
     try:
-        resposta = supabase.table("bate-papo_geral").select("*").order("criado_em", desc=True).limit(50).execute()
+        resposta = supabase.table("bate-papo_profissional").select("*").order("criado_em", desc=True).limit(40).execute()
         
         if resposta.data:
-            for msg in resposta.data:
-                data_hora = msg['criado_em'].split("T")[1][:5] if 'criado_em' in msg and "T" in msg['criado_em'] else ""
+            for msg in response := resposta.data:
+                col1, col2 = st.columns([1, 6])
                 
-                if msg.get('usuario') == st.session_state.nome_usuario:
-                    st.markdown(f"🔹 **Você** [{data_hora}]: {msg.get('mensagem')}")
-                else:
-                    st.markdown(f"👤 **{msg.get('usuario')}** [{data_hora}]: {msg.get('mensagem')}")
+                with col1:
+                    foto_user = msg.get("url_foto_perfil") or FOTO_PADRAO
+                    st.image(foto_user, width=45)
+                
+                with col2:
+                    st.markdown(f"**{msg['username']}**")
+                    if msg.get("mensagem"):
+                        st.write(msg["mensagem"])
+                    if msg.get("url_imagem_enviada"):
+                        st.image(msg["url_imagem_enviada"], use_container_width=True)
+                st.markdown("---")
         else:
-            st.write("Nenhuma mensagem por aqui ainda. Comece a conversar!")
+            st.write("Nenhuma mensagem por aqui. Seja o primeiro a falar!")
             
     except Exception as e:
-        st.write("Aguardando conexão com o banco de dados...")
-        
+        st.write("Aguardando carregamento das conversas...")
