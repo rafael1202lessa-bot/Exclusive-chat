@@ -59,7 +59,7 @@ else:
                         "usuario": st.session_state.nome_usuario,
                         "mensagem": nova_msg.strip()
                     }).execute()
-                    st.rerun()
+                    st.experimental_rerun()
                 except Exception as e:
                     st.error("Não foi possível enviar a mensagem no momento.")
             else:
