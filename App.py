@@ -1,14 +1,12 @@
 import streamlit as st
 from supabase import create_client, Client
-import datetime
 
 # Configuração da página do Chat
 st.set_page_config(page_title="Chat Privado da Galera", page_icon="💬", layout="centered")
 
-# --- CONEXÃO COM O SEU SEGUNDO BANCO DE DADOS ---
-# Substitua pelas credenciais do seu SEGUNDO projeto do Supabase
-SUPABASE_URL = "SUA_URL_DO_SEGUNDO_BANCO"
-SUPABASE_KEY = "SUA_KEY_DO_SEGUNDO_BANCO"
+# --- CONEXÃO COM O SEU BANCO DE DADOS ---
+SUPABASE_URL = "https://ldjtqgeyorkzbvuichjj.supabase.co"
+SUPABASE_KEY = "sb_publishable_ZWY9Hp6kQrhOzff6xc_DrA_8TlnrqQ_"
 
 try:
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -16,10 +14,9 @@ except Exception as e:
     st.error("Erro de conexão com o servidor.")
 
 # --- DEFINIÇÃO DA SENHA DE SEGURANÇA ---
-# Escolha uma senha segura e passe para seus amigos pelo TikTok
 SENHA_CORRETA = "galera123" 
 
-# Controle de sessão (se está logado ou não)
+# Controle de sessão
 if "logado" not in st.session_state:
     st.session_state.logado = False
 if "nome_usuario" not in st.session_state:
@@ -48,13 +45,11 @@ else:
     st.title("💬 Chat Oficial da Galera")
     st.write(f"Conectado como: **{st.session_state.nome_usuario}**")
     
-    # Botão para deslogar com segurança
     if st.sidebar.button("Sair do Chat 🚪"):
         st.session_state.logado = False
         st.session_state.nome_usuario = ""
         st.rerun()
 
-    # --- CAMPO PARA ENVIAR MENSAGEM ---
     with st.container():
         nova_msg = st.text_input("Digite sua mensagem:", placeholder="Escreva aqui...", key="campo_texto")
         if st.button("Enviar Mensagem ✉️"):
@@ -73,17 +68,13 @@ else:
     st.markdown("---")
     st.subheader("📋 Mensagens Recentes")
 
-    # ---ÁREA DE EXIBIÇÃO DAS MENSAGENS ---
     try:
-        # Busca as últimas 50 mensagens enviadas no banco
-        resposta = supabase.table("chat_geral").select("*").order("created_at", desc=True).limit(50).execute()
+        resposta = supabase.table("chat_geral").select("*").order("criado_em", desc=True).limit(50).execute()
         
         if resposta.data:
             for msg in resposta.data:
-                # Formata o horário da mensagem de forma simples
-                data_hora = msg['created_at'].split("T")[1][:5] if "T" in msg['created_at'] else ""
+                data_hora = msg['criado_em'].split("T")[1][:5] if "T" in msg['criado_em'] else ""
                 
-                # Destaca se a mensagem foi enviada pelo próprio usuário logado
                 if msg['usuario'] == st.session_state.nome_usuario:
                     st.markdown(f"🔹 **Você** [{data_hora}]: {msg['mensagem']}")
                 else:
@@ -91,6 +82,6 @@ else:
         else:
             st.write("Nenhuma mensagem por aqui ainda. Comece a conversar!")
             
-    except Exception:
-        st.write("Aguardando novas mensagens...")
-                  
+    except Exception as e:
+        st.write("Aguardando conexão correta com o servidor...")
+        
