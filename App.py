@@ -129,7 +129,7 @@ else:
         resposta = supabase.table("bate-papo_profissional").select("*").order("criado_em", desc=True).limit(40).execute()
         
         if resposta.data:
-            for msg in response := resposta.data:
+            for msg in resposta.data:
                 col1, col2 = st.columns([1, 6])
                 
                 with col1:
@@ -148,3 +148,4 @@ else:
             
     except Exception as e:
         st.write("Aguardando carregamento das conversas...")
+                        
