@@ -38,7 +38,7 @@ if not st.session_state.logado:
         else:
             st.session_state.logado = True
             st.session_state.nome_usuario = nome
-            st.experimental_rerun()
+            st.rerun()
 
 # --- TELA 2: O CHAT DE CONVERSAS ---
 else:
@@ -49,7 +49,7 @@ else:
     if st.sidebar.button("Sair do Chat 🚪"):
         st.session_state.logado = False
         st.session_state.nome_usuario = ""
-        st.experimental_rerun()
+        st.rerun()
 
     # --- CAMPO PARA ENVIAR MENSAGEM ---
     with st.container():
@@ -62,7 +62,7 @@ else:
                         "usuario": st.session_state.nome_usuario,
                         "mensagem": nova_msg.strip()
                     }).execute()
-                    st.experimental_rerun()
+                    st.rerun()
                 except Exception as e:
                     try:
                         # Tentativa 2: Caso o tradutor do navegador tenha criado como 'usuario text'
@@ -70,7 +70,7 @@ else:
                             "usuario text": st.session_state.nome_usuario,
                             "mensagem": nova_msg.strip()
                         }).execute()
-                        st.experimental_rerun()
+                        st.rerun()
                     except Exception as e2:
                         try:
                             # Tentativa 3: Caso tenha mudado mensagem para 'mensagem text' também
@@ -78,7 +78,7 @@ else:
                                 "usuario text": st.session_state.nome_usuario,
                                 "mensagem text": nova_msg.strip()
                             }).execute()
-                            st.experimental_rerun()
+                            st.rerun()
                         except Exception as e3:
                             st.error("Erro na estrutura da tabela do Supabase. Verifique os nomes das colunas.")
             else:
