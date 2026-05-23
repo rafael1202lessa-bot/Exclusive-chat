@@ -57,8 +57,8 @@ else:
         if st.button("Enviar Mensagem ✉️"):
             if nova_msg.strip() != "":
                 try:
-                    # Tentativa 1: Nome padrão das colunas
-                    supabase.table("chat_geral").insert({
+                    # Envia para a tabela correta 'bate-papo_geral'
+                    supabase.table("bate-papo_geral").insert({
                         "usuario": st.session_state.nome_usuario,
                         "mensagem": nova_msg.strip()
                     }).execute()
@@ -66,7 +66,7 @@ else:
                 except Exception as e:
                     try:
                         # Tentativa 2: Caso o tradutor do navegador tenha criado como 'usuario text'
-                        supabase.table("chat_geral").insert({
+                        supabase.table("bate-papo_geral").insert({
                             "usuario text": st.session_state.nome_usuario,
                             "mensagem": nova_msg.strip()
                         }).execute()
@@ -74,13 +74,13 @@ else:
                     except Exception as e2:
                         try:
                             # Tentativa 3: Caso tenha mudado mensagem para 'mensagem text' também
-                            supabase.table("chat_geral").insert({
+                            supabase.table("bate-papo_geral").insert({
                                 "usuario text": st.session_state.nome_usuario,
                                 "mensagem text": nova_msg.strip()
                             }).execute()
                             st.rerun()
                         except Exception as e3:
-                            st.error("Erro na estrutura da tabela do Supabase. Verifique os nomes das colunas.")
+                            st.error("Erro na estrutura da tabela do Supabase. Verifique se o RLS está desativado.")
             else:
                 st.warning("Não é possível enviar uma mensagem vazia!")
 
@@ -89,11 +89,10 @@ else:
 
     # --- ÁREA DE EXIBIÇÃO DAS MENSAGENS ---
     try:
-        resposta = supabase.table("chat_geral").select("*").order("criado_em", desc=True).limit(50).execute()
+        resposta = supabase.table("bate-papo_geral").select("*").order("criado_em", desc=True).limit(50).execute()
         
         if resposta.data:
             for msg in resposta.data:
-                # Adaptação para ler 'criado_em' gerado pela tradução
                 data_hora = msg['criado_em'].split("T")[1][:5] if 'criado_em' in msg and "T" in msg['criado_em'] else ""
                 
                 if msg.get('usuario') == st.session_state.nome_usuario or msg.get('usuario text') == st.session_state.nome_usuario:
