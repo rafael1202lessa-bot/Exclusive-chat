@@ -113,12 +113,15 @@ else:
         try:
             dados = supabase.table("feed_videos").select("*").execute()
             if dados.data:
-                for v in reversed(dados.data):
+                for idx, v in enumerate(reversed(dados.data)):
                     autor = v.get('username_autor', 'Membro')
                     img_autor = v.get('avatar_autor') or FOTO_PADRAO
                     video_url = v["url_video"]
                     if "shorts/" in video_url:
                         video_url = video_url.replace("shorts/", "watch?v=")
+
+                    id_unico_video = v.get("id") or v.get("id_video") or hash(video_url)
+                    chave_componente = f"vid_{id_unico_video}_{idx}"
 
                     selo_verificado = ""
                     id_autor = None
@@ -144,11 +147,11 @@ else:
                             try:
                                 ja_segue = supabase.table("seguidores").select("*").eq("id_seguidor", user_atual["id"]).eq("id_seguido", id_autor).execute()
                                 if ja_segue.data:
-                                    if st.button("Seguindo ✓", key=f"unfol_{v['id']}", use_container_width=True):
+                                    if st.button("Seguindo ✓", key=f"unfol_{chave_componente}", use_container_width=True):
                                         supabase.table("seguidores").delete().eq("id_seguidor", user_atual["id"]).eq("id_seguido", id_autor).execute()
                                         st.rerun()
                                 else:
-                                    if st.button("Seguir ➕", key=f"fol_{v['id']}", use_container_width=True, type="primary"):
+                                    if st.button("Seguir ➕", key=f"fol_{chave_componente}", use_container_width=True, type="primary"):
                                         supabase.table("seguidores").insert({"id_seguidor": user_atual["id"], "id_seguido": id_autor}).execute()
                                         st.rerun()
                             except: pass
@@ -159,22 +162,27 @@ else:
                     col_lk, col_del = st.columns([1, 1])
                     likes = v.get("curtidas", 0)
                     with col_lk:
-                        if st.button(f"❤️ {likes} Curtidas", key=f"lk_{v['id']}"):
-                            supabase.table("feed_videos").update({"curtidas": likes + 1}).eq("id", v["id"]).execute()
+                        if st.button(f"❤️ {likes} Curtidas", key=f"lk_{chave_componente}"):
+                            try:
+                                supabase.table("feed_videos").update({"curtidas": likes + 1}).eq("url_video", video_url).execute()
+                            except:
+                                if "id" in v: supabase.table("feed_videos").update({"curtidas": likes + 1}).eq("id", v["id"]).execute()
                             st.rerun()
                     
                     with col_del:
                         if autor == user_atual["username"]:
-                            if st.button("Excluir Vídeo 🗑️", key=f"del_{v['id']}"):
-                                supabase.table("feed_videos").delete().eq("id", v["id"]).execute()
+                            if st.button("Excluir Vídeo 🗑️", key=f"del_{chave_componente}"):
+                                try:
+                                    supabase.table("feed_videos").delete().eq("url_video", video_url).execute()
+                                except:
+                                    if "id" in v: supabase.table("feed_videos").delete().eq("id", v["id"]).execute()
                                 st.success("Vídeo removido!")
                                 st.rerun()
 
-                    # 💬 SEÇÃO DE COMENTÁRIOS ADAPTADA (ID_VIDEO COMO TEXTO)
                     total_coment = 0
                     lista_comentarios = []
                     try:
-                        res_c = supabase.table("comentarios_videos").select("*").eq("id_video", str(v["id"])).execute()
+                        res_c = supabase.table("comentarios_videos").select("*").eq("id_video", str(video_url)).execute()
                         if res_c.data:
                             lista_comentarios = res_c.data
                             total_coment = len(res_c.data)
@@ -182,12 +190,12 @@ else:
                         pass
 
                     with st.expander(f"💬 Comentários ({total_coment})"):
-                        novo_coment = st.text_input("Escreva um comentário...", key=f"in_cm_{v['id']}", placeholder="O que achou desse edit?")
-                        if st.button("Comentar 🚀", key=f"btn_cm_{v['id']}"):
+                        novo_coment = st.text_input("Escreva um comentário...", key=f"in_cm_{chave_componente}", placeholder="O que achou desse edit?")
+                        if st.button("Comentar 🚀", key=f"btn_cm_{chave_componente}"):
                             if novo_coment.strip():
                                 try:
                                     supabase.table("comentarios_videos").insert({
-                                        "id_video": str(v["id"]),
+                                        "id_video": str(video_url),
                                         "username_autor": user_atual["username"],
                                         "avatar_autor": user_atual.get("url_foto_perfil") or FOTO_PADRAO,
                                         "comentario": novo_coment.strip()
@@ -200,10 +208,28 @@ else:
                         st.markdown("---")
                         if lista_comentarios:
                             for c in reversed(lista_comentarios):
+                                autor_c = c['username_autor']
+                                selo_comentario = ""
+                                
+                                # Verificação dinâmica do selo para os comentários
+                                try:
+                                    b_aut_c = supabase.table("perfis_usuarios").select("id").eq("username", autor_c).execute()
+                                    if b_aut_c.data:
+                                        id_aut_c = b_aut_c.data[0]["id"]
+                                        c_seg_c = supabase.table("seguidores").select("*", count="exact").eq("id_seguido", id_aut_c).execute()
+                                        qtd_seg_c = c_seg_c.count if (hasattr(c_seg_c, "count") and c_seg_c.count is not None) else len(c_seg_c.data)
+                                        
+                                        if autor_c == NOME_DEVELOPER:
+                                            selo_comentario = " 👑`DEV`"
+                                        elif qtd_seg_c >= 1000:
+                                            selo_comentario = " ✔️"
+                                except:
+                                    pass
+
                                 c_col1, c_col2 = st.columns([1, 6])
                                 with c_col1: st.image(c.get("avatar_autor") or FOTO_PADRAO, width=30)
                                 with c_col2:
-                                    st.markdown(f"**@{c['username_autor']}**")
+                                    st.markdown(f"**@{autor_c}**{selo_comentario}")
                                     st.write(c["comentario"])
                                 st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
                         else:
@@ -274,35 +300,5 @@ else:
                     st.success(f"Código: {cod}")
             with m_tabs[2]:
                 cod_d = st.text_input("Código:").strip().upper()
-                if st.button("Entrar 🚪", use_container_width=True) and cod_d:
-                    st.session_state.sala_ativa = cod_d
-                    st.rerun()
-            with m_tabs[3]:
-                try:
-                    peds = supabase.table("lista_amigos").select("*").eq("id_usuario_recebe", user_atual["id"]).eq("status", "pendente").execute()
-                    for p in peds.data:
-                        dr = supabase.table("perfis_usuarios").select("username").eq("id", p["id_usuario_envio"]).execute()
-                        if dr.data:
-                            st.write(f"Pedido de: **{dr.data[0]['username']}**")
-                            if st.button("Aceitar", key=f"ac_{p['id']}"):
-                                supabase.table("lista_amigos").update({"status": "aceito"}).eq("id", p["id"]).execute()
-                                st.rerun()
-                    conf = supabase.table("lista_amigos").select("*").or_(f"id_usuario_envio.eq.{user_atual['id']},id_usuario_recebe.eq.{user_atual['id']}").eq("status", "aceito").execute()
-                    for c in conf.data:
-                        o_id = c["id_usuario_recebe"] if str(c["id_usuario_envio"]) == str(user_atual["id"]) else c["id_usuario_envio"]
-                        du = supabase.table("perfis_usuarios").select("username").eq("id", o_id).execute()
-                        if du.data: st.write(f"🟢 {du.data[0]['username']}")
-                except: pass
-            with m_tabs[4]:
-                b_amg = st.text_input("Usuário para adicionar:").strip()
-                if st.button("Enviar Pedido ➕", use_container_width=True) and b_amg:
-                    try:
-                        alvo = supabase.table("perfis_usuarios").select("*").eq("username", b_amg).execute()
-                        if alvo.data:
-                            if str(alvo.data[0]["id"]) == str(user_atual["id"]): st.error("Não pode se adicionar!")
-                            else:
-                                supabase.table("lista_amigos").insert({"id_usuario_envio": user_atual["id"], "id_usuario_recebe": alvo.data[0]["id"], "status": "pendente"}).execute()
-                                st.success("Enviado!")
-                        else: st.error("Não encontrado.")
-                    except: st.error("Erro.")
-                                                                             
+                if st.button("Entrar 🚪",
+                
