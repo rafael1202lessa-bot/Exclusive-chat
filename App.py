@@ -170,15 +170,15 @@ else:
                                 st.success("Vídeo removido!")
                                 st.rerun()
 
-                    # 💬 SEÇÃO DE COMENTÁRIOS BLINDADA CONTRA ERROS
+                    # 💬 SEÇÃO DE COMENTÁRIOS ADAPTADA (ID_VIDEO COMO TEXTO)
                     total_coment = 0
                     lista_comentarios = []
                     try:
-                        res_c = supabase.table("comentarios_videos").select("*").eq("id_video", v["id"]).execute()
+                        res_c = supabase.table("comentarios_videos").select("*").eq("id_video", str(v["id"])).execute()
                         if res_c.data:
                             lista_comentarios = res_c.data
                             total_coment = len(res_c.data)
-                    except Exception as e:
+                    except:
                         pass
 
                     with st.expander(f"💬 Comentários ({total_coment})"):
@@ -187,7 +187,7 @@ else:
                             if novo_coment.strip():
                                 try:
                                     supabase.table("comentarios_videos").insert({
-                                        "id_video": v["id"],
+                                        "id_video": str(v["id"]),
                                         "username_autor": user_atual["username"],
                                         "avatar_autor": user_atual.get("url_foto_perfil") or FOTO_PADRAO,
                                         "comentario": novo_coment.strip()
@@ -305,4 +305,4 @@ else:
                                 st.success("Enviado!")
                         else: st.error("Não encontrado.")
                     except: st.error("Erro.")
-    
+                                                                             
