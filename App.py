@@ -170,7 +170,7 @@ else:
                                 st.success("Vídeo removido!")
                                 st.rerun()
 
-                    # 💬 SEÇÃO DE COMENTÁRIOS FORÇADA COM TRATAMENTO DE ERROS
+                    # 💬 SEÇÃO DE COMENTÁRIOS BLINDADA CONTRA ERROS
                     total_coment = 0
                     lista_comentarios = []
                     try:
@@ -178,11 +178,11 @@ else:
                         if res_c.data:
                             lista_comentarios = res_c.data
                             total_coment = len(res_c.data)
-                    except:
+                    except Exception as e:
                         pass
 
                     with st.expander(f"💬 Comentários ({total_coment})"):
-                        novo_coment = st.text_input("Escreva um comentário...", key=f"in_cm_{v['id']}")
+                        novo_coment = st.text_input("Escreva um comentário...", key=f"in_cm_{v['id']}", placeholder="O que achou desse edit?")
                         if st.button("Comentar 🚀", key=f"btn_cm_{v['id']}"):
                             if novo_coment.strip():
                                 try:
@@ -192,10 +192,10 @@ else:
                                         "avatar_autor": user_atual.get("url_foto_perfil") or FOTO_PADRAO,
                                         "comentario": novo_coment.strip()
                                     }).execute()
-                                    st.success("Postado!")
+                                    st.success("Comentário publicado!")
                                     st.rerun()
                                 except Exception as err:
-                                    st.error(f"Erro no banco: {err}. Tente mudar o tipo da coluna id_video no Supabase.")
+                                    st.error(f"Erro ao salvar: {err}")
 
                         st.markdown("---")
                         if lista_comentarios:
@@ -207,7 +207,7 @@ else:
                                     st.write(c["comentario"])
                                 st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
                         else:
-                            st.caption("Nenhum comentário ainda.")
+                            st.caption("Nenhum comentário ainda. Seja o primeiro!")
                                 
                     st.markdown("---")
         except Exception as e: st.error(f"Erro ao carregar o feed: {e}")
@@ -305,4 +305,4 @@ else:
                                 st.success("Enviado!")
                         else: st.error("Não encontrado.")
                     except: st.error("Erro.")
-                    
+    
