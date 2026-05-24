@@ -215,7 +215,7 @@ else:
                 if nome_novo_grupo:
                     novo_codigo = f"GRUPO-{str(uuid.uuid4())[:8].upper()}"
                     try:
-                        supabase.table("salas_chat").insert({"codigo_sala": novo_codigo, "nome_sala": nome_novo_grupo, "tipo": "grupo"}).execute()
+                        supabase.table("salas-chat").insert({"codigo_sala": novo_codigo, "nome_sala": nome_novo_grupo, "tipo": "grupo"}).execute()
                         supabase.table("membros_salas").insert({"codigo_sala": novo_codigo, "id_usuario": user_atual["id"]}).execute()
                         st.success(f"Grupo criado! Código: **{novo_codigo}**")
                     except Exception as erro_banco:
