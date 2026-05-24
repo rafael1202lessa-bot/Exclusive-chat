@@ -162,7 +162,7 @@ else:
                                         st.rerun()
                                 else:
                                     if st.button("Seguir ➕", key=f"fol_{chave_componente}", use_container_width=True, type="primary"):
-                                        supabase.table("seguidores").insert({"id_seguidor": user_atual["id"], "id_seguido", id_autor}).execute()
+                                        supabase.table("seguidores").insert({"id_seguidor": user_atual["id"], "id_seguido": id_autor}).execute()
                                         st.rerun()
                             except:
                                 pass
