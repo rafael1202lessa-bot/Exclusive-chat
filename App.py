@@ -76,11 +76,12 @@ else:
             if st.button("Publicar 🚀", use_container_width=True):
                 if url_v.strip() and titulo_v.strip():
                     try:
-                        # Removido 'avatar_autor' para evitar o conflito com a estrutura do banco
+                        # Agora usando com segurança a coluna avatar_autor criada!
                         supabase.table("feed_videos").insert({
                             "titulo": titulo_v.strip(),
                             "url_video": url_v.strip(),
                             "username_autor": user_atual["username"],
+                            "avatar_autor": user_atual.get("url_foto_perfil") or FOTO_PADRAO,
                             "curtidas": 0
                         }).execute()
                         st.success("Postado com sucesso!")
@@ -92,13 +93,7 @@ else:
             if dados.data:
                 for v in reversed(dados.data):
                     autor = v.get('username_autor', 'Membro')
-                    # Busca a foto em tempo real para não depender da coluna ausente
-                    img_autor = FOTO_PADRAO
-                    try:
-                        p_busca = supabase.table("perfis_usuarios").select("url_foto_perfil").eq("username", autor).execute()
-                        if p_busca.data and p_busca.data[0].get("url_foto_perfil"):
-                            img_autor = p_busca.data[0]["url_foto_perfil"]
-                    except: pass
+                    img_autor = v.get('avatar_autor') or FOTO_PADRAO
 
                     col_img, col_txt = st.columns([1, 6])
                     with col_img: st.image(img_autor, width=40)
@@ -192,7 +187,7 @@ else:
                         o_id = c["id_usuario_recebe"] if str(c["id_usuario_envio"]) == str(user_atual["id"]) else c["id_usuario_envio"]
                         du = supabase.table("perfis_usuarios").select("username").eq("id", o_id).execute()
                         if du.data: st.write(f"🟢 {du.data[0]['username']}")
-                except: p_busca = None
+                except: pass
             with m_tabs[4]:
                 b_amg = st.text_input("Usuário para adicionar:").strip()
                 if st.button("Enviar Pedido ➕", use_container_width=True) and b_amg:
@@ -202,7 +197,6 @@ else:
                             if str(alvo.data[0]["id"]) == str(user_atual["id"]): st.error("Não pode se adicionar!")
                             else:
                                 supabase.table("lista_amigos").insert({"id_usuario_envio": user_atual["id"], "id_usuario_recebe": alvo.data[0]["id"], "status": "pendente"}).execute()
-                                m_ids = None
                                 st.success("Enviado!")
                         else: st.error("Não encontrado.")
                     except: st.error("Erro.")
