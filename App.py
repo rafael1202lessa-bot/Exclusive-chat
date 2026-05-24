@@ -19,7 +19,7 @@ if supabase is None:
 
 CHAVE_SECRETA = "ChatPrivado2026"
 FOTO_PADRAO = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
-NOME_DEVELOPER = "Rafael_oficial"  # Seu usuário para ganhar o verificado especial
+NOME_DEVELOPER = "Rafael_oficial"
 
 if "usuario_logado" not in st.session_state: st.session_state.usuario_logado = None
 if "sala_ativa" not in st.session_state: st.session_state.sala_ativa = None
@@ -62,14 +62,10 @@ if st.session_state.usuario_logado is None:
 else:
     user_atual = st.session_state.usuario_logado
     
-    # Buscar contagem de seguidores em tempo real para a barra lateral
     total_seg = 0
     try:
         res_seg = supabase.table("seguidores").select("*", count="exact").eq("id_seguido", user_atual["id"]).execute()
-        if hasattr(res_seg, "count") and res_seg.count is not None:
-            total_seg = res_seg.count
-        else:
-            total_seg = len(res_seg.data) if res_seg.data else 0
+        total_seg = res_seg.count if (hasattr(res_seg, "count") and res_seg.count is not None) else len(res_seg.data)
     except: pass
 
     st.sidebar.image(user_atual.get("url_foto_perfil") or FOTO_PADRAO, width=90)
@@ -124,7 +120,6 @@ else:
                     if "shorts/" in video_url:
                         video_url = video_url.replace("shorts/", "watch?v=")
 
-                    # Lógica para descobrir verificado do autor do post
                     selo_verificado = ""
                     id_autor = None
                     try:
@@ -140,12 +135,9 @@ else:
                                 selo_verificado = " ✔️"
                     except: pass
 
-                    # Cabeçalho do Post
                     col_img, col_txt, col_btn_seg = st.columns([1, 4, 2])
-                    with col_img: 
-                        st.image(img_autor, width=40)
-                    with col_txt: 
-                        st.markdown(f"**@{autor}**{selo_verificado}")
+                    with col_img: st.image(img_autor, width=40)
+                    with col_txt: st.markdown(f"**@{autor}**{selo_verificado}")
                     
                     with col_btn_seg:
                         if autor != user_atual["username"] and id_autor is not None:
@@ -164,7 +156,6 @@ else:
                     st.caption(v["titulo"])
                     st.video(video_url)
                     
-                    # Botões de Ação (Curtir e Excluir)
                     col_lk, col_del = st.columns([1, 1])
                     likes = v.get("curtidas", 0)
                     with col_lk:
@@ -174,22 +165,24 @@ else:
                     
                     with col_del:
                         if autor == user_atual["username"]:
-                            if st.button("Excluir Vídeo 🗑️", key=f"del_{v['id']}", help="Clique para deletar permanentemente"):
+                            if st.button("Excluir Vídeo 🗑️", key=f"del_{v['id']}"):
                                 supabase.table("feed_videos").delete().eq("id", v["id"]).execute()
                                 st.success("Vídeo removido!")
                                 st.rerun()
 
-                    # 💬 SEÇÃO DE COMENTÁRIOS ESTILO TIKTOK
-                    # Buscar total de comentários para mostrar no botão
+                    # 💬 SEÇÃO DE COMENTÁRIOS FORÇADA COM TRATAMENTO DE ERROS
                     total_coment = 0
+                    lista_comentarios = []
                     try:
-                        res_c = supabase.table("comentarios_videos").select("*", count="exact").eq("id_video", v["id"]).execute()
-                        total_coment = res_c.count if (hasattr(res_c, "count") and res_c.count is not None) else len(res_c.data)
-                    except: pass
+                        res_c = supabase.table("comentarios_videos").select("*").eq("id_video", v["id"]).execute()
+                        if res_c.data:
+                            lista_comentarios = res_c.data
+                            total_coment = len(res_c.data)
+                    except:
+                        pass
 
                     with st.expander(f"💬 Comentários ({total_coment})"):
-                        # Campo para digitar novo comentário
-                        novo_coment = st.text_input("Escreva um comentário...", key=f"in_cm_{v['id']}", placeholder="O que você achou dessa edit?")
+                        novo_coment = st.text_input("Escreva um comentário...", key=f"in_cm_{v['id']}")
                         if st.button("Comentar 🚀", key=f"btn_cm_{v['id']}"):
                             if novo_coment.strip():
                                 try:
@@ -199,26 +192,22 @@ else:
                                         "avatar_autor": user_atual.get("url_foto_perfil") or FOTO_PADRAO,
                                         "comentario": novo_coment.strip()
                                     }).execute()
-                                    st.success("Comentário postado!")
+                                    st.success("Postado!")
                                     st.rerun()
-                                except Exception as e: st.error(f"Erro ao comentar: {e}")
+                                except Exception as err:
+                                    st.error(f"Erro no banco: {err}. Tente mudar o tipo da coluna id_video no Supabase.")
 
                         st.markdown("---")
-                        # Listar comentários existentes para este vídeo específico
-                        try:
-                            comentarios = supabase.table("comentarios_videos").select("*").eq("id_video", v["id"]).execute()
-                            if comentarios.data:
-                                for c in reversed(comentarios.data):
-                                    c_col1, c_col2 = st.columns([1, 6])
-                                    with c_col1:
-                                        st.image(c.get("avatar_autor") or FOTO_PADRAO, width=30)
-                                    with c_col2:
-                                        st.markdown(f"**@{c['username_autor']}**")
-                                        st.write(c["comentario"])
-                                    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
-                            else:
-                                st.caption("Seja o primeiro a comentar!")
-                        except: st.caption("Erro ao carregar comentários.")
+                        if lista_comentarios:
+                            for c in reversed(lista_comentarios):
+                                c_col1, c_col2 = st.columns([1, 6])
+                                with c_col1: st.image(c.get("avatar_autor") or FOTO_PADRAO, width=30)
+                                with c_col2:
+                                    st.markdown(f"**@{c['username_autor']}**")
+                                    st.write(c["comentario"])
+                                st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
+                        else:
+                            st.caption("Nenhum comentário ainda.")
                                 
                     st.markdown("---")
         except Exception as e: st.error(f"Erro ao carregar o feed: {e}")
@@ -316,4 +305,4 @@ else:
                                 st.success("Enviado!")
                         else: st.error("Não encontrado.")
                     except: st.error("Erro.")
-                            
+                    
