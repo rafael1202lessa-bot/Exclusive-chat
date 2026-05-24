@@ -316,7 +316,7 @@ else:
                     st.success(f"Código: {cod}")
             with m_tabs[2]:
                 cod_d = st.text_input("Código:").strip().upper()
-                if st.button("Entrar 🚪", use_container_width=True) and cod_d:
+                if st.button"Entrar 🚪", use_container_width=True) and cod_d:
                     st.session_state.sala_ativa = cod_d
                     st.rerun()
             with m_tabs[3]:
