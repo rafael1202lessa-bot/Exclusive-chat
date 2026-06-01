@@ -1,361 +1,82 @@
-import streamlit as st
+import streamlit as str
 from supabase import create_client, Client
-import uuid
 
-st.set_page_config(page_title="Silver Tok v2.0", page_icon="🎬", layout="centered")
+# 1. Configuração da página do Streamlit
+str.set_page_config(page_title="Chat EXV", page_icon="💬", layout="centered")
 
+# 2. Conexão direta com o seu Supabase
 SUPABASE_URL = "https://ldjtqgeyorkzbvuichjj.supabase.co"
 SUPABASE_KEY = "sb_publishable_ZWY9Hp6kQrhOzff6xc_DrA_8TlnrqQ_"
 
-@st.cache_resource
-def init_connection():
-    try:
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
-    except:
-        return None
+# Inicializa o cliente do banco de dados de forma segura no Streamlit
+@str.cache_resource
+def iniciar_banco():
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-supabase = init_connection()
-if supabase is None:
-    st.error("Erro de conexão.")
-    st.stop()
+banco = iniciar_banco()
 
-CHAVE_SECRETA = "ChatPrivado2026"
-FOTO_PADRAO = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
-NOME_DEVELOPER = "Rafael_oficial"
+# 3. Gerenciar o estado do login (saber se o usuário já entrou ou não)
+if "logado" not in str.session_state:
+    str.session_state.logado = False
+    str.session_state.usuario_email = ""
 
-if "usuario_logado" not in st.session_state:
-    st.session_state.usuario_logado = None
-if "sala_ativa" not in st.session_state:
-    st.session_state.sala_ativa = None
-if "id_upload_chat" not in st.session_state:
-    st.session_state.id_upload_chat = str(uuid.uuid4())
-
-if st.session_state.usuario_logado is None:
-    st.title("🎬 Silver Tok & Chat 🔐")
-    aba_auth = st.tabs(["Fazer Login", "Criar Nova Conta"])
-    with aba_auth[0]:
-        st.subheader("Acesse sua Conta")
-        login_user = st.text_input("Usuário:", key="login_user").strip()
-        login_senha = st.text_input("Senha:", type="password", key="login_senha")
-        if st.button("Entrar 🚀", key="btn_login", use_container_width=True):
-            if login_user and login_senha:
-                busca = supabase.table("perfis_usuarios").select("*").eq("username", login_user).execute()
-                if busca.data and busca.data[0]["senha"] == login_senha:
-                    st.session_state.usuario_logado = busca.data[0]
-                    st.success("Login feito!")
-                    st.rerun()
-                else:
-                    st.error("Incorreto.")
-            else:
-                st.warning("Preencha tudo!")
-    with aba_auth[1]:
-        st.subheader("Crie seu Perfil")
-        cad_user = st.text_input("Escolha Usuário:", key="cad_user").strip()
-        cad_senha = st.text_input("Crie Senha:", type="password", key="cad_senha")
-        cad_foto = st.file_uploader("Foto de Perfil:", type=["png", "jpg", "jpeg"], key="cad_foto")
-        codigo_convite = st.text_input("🔑 Código Secreto:", type="password", key="codigo_convite")
-        if st.button("Cadastrar Conta 🎉", key="btn_cad", use_container_width=True):
-            if cad_user and cad_senha and codigo_convite == CHAVE_SECRETA:
-                try:
-                    url_foto = FOTO_PADRAO
-                    if cad_foto:
-                        nome_f = f"perfis/{uuid.uuid4()}.png"
-                        supabase.storage.from_("imagens_chat").upload(nome_f, cad_foto.read())
-                        url_foto = supabase.storage.from_("imagens_chat").get_public_url(nome_f)
-                    supabase.table("perfis_usuarios").insert({"username": cad_user, "senha": cad_senha, "url_foto_perfil": url_foto}).execute()
-                    st.success("Criado! Faça login.")
-                except:
-                    st.error("Erro ou usuário já existe.")
-            else:
-                st.warning("Verifique os campos!")
-else:
-    user_atual = st.session_state.usuario_logado
-    total_seg = 0
-    try:
-        res_seg = supabase.table("seguidores").select("*", count="exact").eq("id_seguido", user_atual["id"]).execute()
-        total_seg = res_seg.count if (hasattr(res_seg, "count") and res_seg.count is not None) else len(res_seg.data)
-    except:
-        pass
-
-    st.sidebar.image(user_atual.get("url_foto_perfil") or FOTO_PADRAO, width=90)
-    if user_atual["username"] == NOME_DEVELOPER:
-        st.sidebar.write(f"Usuário: **{user_atual['username']}** 👑`DEV`")
-    elif total_seg >= 1000:
-        st.sidebar.write(f"Usuário: **{user_atual['username']}** ✔️")
-    else:
-        st.sidebar.write(f"Usuário: **{user_atual['username']}**")
-    st.sidebar.write(f"👥 **{total_seg}** seguidores")
+# =========================================================
+# TELA DE LOGIN / CADASTRO
+# =========================================================
+if not str.session_state.logado:
+    str.title("💬 Chat EXV — Entrar no Universo")
     
-    if st.sidebar.button("Sair 🚪", use_container_width=True):
-        st.session_state.usuario_logado = None
-        st.session_state.sala_ativa = None
-        st.rerun()
-
-    aba_feed, aba_chat = st.tabs(["📺 Silver Tok (Feed)", "💬 Chat-Exv"])
-    with aba_feed:
-        st.title("📺 Feed de Edits")
-        with st.expander("➕ Publicar Vídeo por Link"):
-            titulo_v = st.text_input("Legenda do Vídeo:", placeholder="Ex: Edit de Bleach! 🔥")
-            url_v = st.text_input("Link do Vídeo (YouTube ou MP4 direto):", placeholder="https://www.youtube.com/watch?v=...")
-            if st.button("Publicar 🚀", use_container_width=True):
-                if url_v.strip() and titulo_v.strip():
-                    link_final = url_v.strip()
-                    if "youtube.com/shorts/" in link_final:
-                        link_final = link_final.replace("youtube.com/shorts/", "youtube.com/watch?v=")
-                    elif "youtu.be/" in link_final and "shorts" in link_final:
-                        link_final = link_final.replace("youtu.be/", "youtube.com/watch?v=")
-                    try:
-                        supabase.table("feed_videos").insert({
-                            "titulo": titulo_v.strip(),
-                            "url_video": link_final,
-                            "username_autor": user_atual["username"],
-                            "avatar_autor": user_atual.get("url_foto_perfil") or FOTO_PADRAO,
-                            "curtidas": 0
-                        }).execute()
-                        st.success("Postado com sucesso!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao salvar no feed: {e}")
-                else:
-                    st.warning("Preencha todos os campos!")
-
-        try:
-            dados = supabase.table("feed_videos").select("*").execute()
-            if dados.data:
-                for idx, v in enumerate(reversed(dados.data)):
-                    autor = v.get('username_autor', 'Membro')
-                    img_autor = v.get('avatar_autor') or FOTO_PADRAO
-                    video_url = v["url_video"]
-                    if "shorts/" in video_url:
-                        video_url = video_url.replace("shorts/", "watch?v=")
-
-                    id_unico_video = v.get("id") or v.get("id_video") or hash(video_url)
-                    chave_componente = f"vid_{id_unico_video}_{idx}"
-
-                    selo_verificado = ""
-                    id_autor = None
-                    try:
-                        b_autor = supabase.table("perfis_usuarios").select("id").eq("username", autor).execute()
-                        if b_autor.data:
-                            id_autor = b_autor.data[0]["id"]
-                            c_seg = supabase.table("seguidores").select("*", count="exact").eq("id_seguido", id_autor).execute()
-                            qtd_seg_autor = c_seg.count if (hasattr(c_seg, "count") and c_seg.count is not None) else len(c_seg.data)
-                            if autor == NOME_DEVELOPER:
-                                selo_verificado = " 👑`DEV`"
-                            elif qtd_seg_autor >= 1000:
-                                selo_verificado = " ✔️"
-                    except:
-                        pass
-
-                    col_img, col_txt, col_btn_seg = st.columns([1, 4, 2])
-                    with col_img:
-                        st.image(img_autor, width=40)
-                    with col_txt:
-                        st.markdown(f"**@{autor}**{selo_verificado}")
-                    with col_btn_seg:
-                        if autor != user_atual["username"] and id_autor is not None:
-                            try:
-                                ja_segue = supabase.table("seguidores").select("*").eq("id_seguidor", user_atual["id"]).eq("id_seguido", id_autor).execute()
-                                if ja_segue.data:
-                                    if st.button("Seguindo ✓", key=f"unfol_{chave_componente}", use_container_width=True):
-                                        supabase.table("seguidores").delete().eq("id_seguidor", user_atual["id"]).eq("id_seguido", id_autor).execute()
-                                        st.rerun()
-                                else:
-                                    if st.button("Seguir ➕", key=f"fol_{chave_componente}", use_container_width=True, type="primary"):
-                                        supabase.table("seguidores").insert({"id_seguidor": user_atual["id"], "id_seguido": id_autor}).execute()
-                                        st.rerun()
-                            except:
-                                pass
-
-                    st.caption(v["titulo"])
-                    st.video(video_url)
-                    
-                    col_lk, col_del = st.columns([1, 1])
-                    likes = v.get("curtidas", 0)
-                    with col_lk:
-                        if st.button(f"❤️ {likes} Curtidas", key=f"lk_{chave_componente}"):
-                            try:
-                                supabase.table("feed_videos").update({"curtidas": likes + 1}).eq("url_video", video_url).execute()
-                            except:
-                                if "id" in v:
-                                    supabase.table("feed_videos").update({"curtidas": likes + 1}).eq("id", v["id"]).execute()
-                            st.rerun()
-                    with col_del:
-                        if autor == user_atual["username"]:
-                            if st.button("Excluir Vídeo 🗑️", key=f"del_{chave_componente}"):
-                                try:
-                                    supabase.table("feed_videos").delete().eq("url_video", video_url).execute()
-                                except:
-                                    if "id" in v:
-                                        supabase.table("feed_videos").delete().eq("id", v["id"]).execute()
-                                st.success("Vídeo removido!")
-                                st.rerun()
-
-                    total_coment = 0
-                    lista_comentarios = []
-                    try:
-                        res_c = supabase.table("comentarios_videos").select("*").eq("id_video", str(video_url)).execute()
-                        if res_c.data:
-                            lista_comentarios = res_c.data
-                            total_coment = len(res_c.data)
-                    except:
-                        pass
-
-                    with st.expander(f"💬 Comentários ({total_coment})"):
-                        novo_coment = st.text_input("Escreva um comentário...", key=f"in_cm_{chave_componente}", placeholder="O que achou desse edit?")
-                        if st.button("Comentar 🚀", key=f"btn_cm_{chave_componente}"):
-                            if novo_coment.strip():
-                                try:
-                                    supabase.table("comentarios_videos").insert({
-                                        "id_video": str(video_url),
-                                        "username_autor": user_atual["username"],
-                                        "avatar_autor": user_atual.get("url_foto_perfil") or FOTO_PADRAO,
-                                        "comentario": novo_coment.strip()
-                                    }).execute()
-                                    st.success("Comentário publicado!")
-                                    st.rerun()
-                                except Exception as err:
-                                    st.error(f"Erro ao salvar: {err}")
-
-                        st.markdown("---")
-                        if lista_comentarios:
-                            for idx_c, c in enumerate(reversed(lista_comentarios)):
-                                autor_c = c['username_autor']
-                                selo_comentario = ""
-                                try:
-                                    b_aut_c = supabase.table("perfis_usuarios").select("id").eq("username", autor_c).execute()
-                                    if b_aut_c.data:
-                                        id_aut_c = b_aut_c.data[0]["id"]
-                                        c_seg_c = supabase.table("seguidores").select("*", count="exact").eq("id_seguido", id_aut_c).execute()
-                                        qtd_seg_c = c_seg_c.count if (hasattr(c_seg_c, "count") and c_seg_c.count is not None) else len(c_seg_c.data)
-                                        if autor_c == NOME_DEVELOPER:
-                                            selo_comentario = " 👑`DEV`"
-                                        elif qtd_seg_c >= 1000:
-                                            selo_comentario = " ✔️"
-                                except:
-                                    pass
-
-                                c_col1, c_col2 = st.columns([1, 6])
-                                with c_col1:
-                                    st.image(c.get("avatar_autor") or FOTO_PADRAO, width=30)
-                                with c_col2:
-                                    st.markdown(f"**@{autor_c}**{selo_comentario}")
-                                    st.write(c["comentario"])
-                                st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
-                        else:
-                            st.caption("Nenhum comentário ainda. Seja o primeiro!")
-                    st.markdown("---")
-        except Exception as e:
-            st.error(f"Erro ao carregar o feed: {e}")
-
-    with aba_chat:
-        if st.session_state.sala_ativa is not None:
-            st.title("💬 Sala Ativa")
-            st.code(f"Código: {st.session_state.sala_ativa}")
-            if st.button("⬅️ Voltar ao Menu", use_container_width=True):
-                st.session_state.sala_ativa = None
-                st.rerun()
-            txt_m = st.text_input("Mensagem:", key="txt_msg_input")
-            upload_img = st.file_uploader("Imagem (Opcional):", type=["png", "jpg", "jpeg", "gif"], key=st.session_state.id_upload_chat)
-            if st.button("Enviar ✉️", use_container_width=True):
-                if txt_m.strip() or upload_img:
-                    url_img = None
-                    if upload_img:
-                        nome_f = f"chat/{uuid.uuid4()}.png"
-                        supabase.storage.from_("imagens_chat").upload(nome_f, upload_img.read())
-                        url_img = supabase.storage.from_("imagens_chat").get_public_url(nome_f)
-                    supabase.table("bate-papo_profissional").insert({"id_usuario": user_atual["id"], "username": user_atual["username"], "url_foto_perfil": user_atual.get("url_foto_perfil") or FOTO_PADRAO, "mensagem": txt_m.strip() if txt_m.strip() else None, "url_imagem_enviada": url_img, "codigo_sala": st.session_state.sala_ativa}).execute()
-                    st.session_state.id_upload_chat = str(uuid.uuid4())
-                    st.rerun()
+    # Abas para organizar entre Entrar e Criar Conta
+    aba_login, aba_cadastro = str.tabs(["🔓 Entrar", "✨ Criar Conta"])
+    
+    with aba_login:
+        email_login = str.text_input("E-mail", key="email_log")
+        senha_login = str.text_input("Senha", type="password", key="senha_log")
+        
+        if str.button("Entrar", key="btn_log"):
             try:
-                res = supabase.table("bate-papo_profissional").select("*").eq("codigo_sala", st.session_state.sala_ativa).execute()
-                if res.data:
-                    for m in reversed(res.data[-40:]):
-                        c1, c2 = st.columns([1, 6])
-                        with c1:
-                            st.image(m.get("url_foto_perfil") or FOTO_PADRAO, width=40)
-                        with c2:
-                            st.markdown(f"**{m['username']}**")
-                            if m.get("mensagem"):
-                                st.write(m["mensagem"])
-                            if m.get("url_imagem_enviada"):
-                                st.image(m["url_imagem_enviada"], use_container_width=True)
-                        st.markdown("---")
-            except:
-                st.write("Erro ao carregar.")
+                # Tenta fazer o login no Supabase
+                resposta = banco.auth.sign_in_with_password({"email": email_login, "password": senha_login})
+                str.session_state.logado = True
+                str.session_state.usuario_email = email_login
+                str.success("Bem-vindo ao Chat EXV!")
+                str.rerun() # Atualiza a tela para mostrar o chat
+            except Exception as e:
+                str.error(f"Erro ao entrar: {e}")
+                
+    with aba_cadastro:
+        email_cad = str.text_input("E-mail", key="email_cad")
+        senha_cad = str.text_input("Senha (mínimo 6 caracteres)", type="password", key="senha_cad")
+        
+        if str.button("Criar Minha Conta", key="btn_cad"):
+            if len(senha_cad) < 6:
+                str.warning("A senha precisa ter pelo menos 6 caracteres!")
+            else:
+                try:
+                    # Tenta criar a conta no Supabase
+                    resposta = banco.auth.sign_up({"email": email_cad, "password": senha_cad})
+                    str.success("Conta criada com sucesso! Agora vá na aba 'Entrar'.")
+                except Exception as e:
+                    str.error(f"Erro no cadastro: {e}")
 
-            # --- 4. ABA CHAT EXV ---
-elif aba_ativa == "💬 Chat EXV":
-    st.title("💬 Chat EXV")
-    aba_dm, aba_grp = st.tabs(["🔒 Conversas Privadas", "👥 Grupos por Código"])
+# =========================================================
+# TELA DO APP (SÓ APARECE APÓS O LOGIN)
+# =========================================================
+else:
+    # Barra lateral com informações do usuário e botão de sair
+    str.sidebar.title("👤 Seu Perfil")
+    str.sidebar.write(f"Conectado como:\n**{str.session_state.usuario_email}**")
     
-    with aba_dm:
-        try:
-            todos_req = supabase.table("perfis_usuarios").select("username, nickname").execute()
-            lista_usuarios = [u for u in todos_req.data if u['username'] != user_atual.get('username')]
-        except: 
-            lista_usuarios = []
-        
-        if lista_usuarios:
-            opcoes_usuarios = {u['username']: f"{u['nickname']} (@{u['username']})" for u in lista_usuarios}
-            usuario_selecionado = st.selectbox("Abrir sala com:", list(opcoes_usuarios.keys()), format_func=lambda x: opcoes_usuarios[x])
-            if st.button("🚪 Entrar na Sala Privada", use_container_width=True):
-                st.session_state.sala_privada_atual = obter_id_sala_privada(user_atual.get('username'), usuario_selecionado)
-                st.session_state.codigo_grupo_atual = None
-        
-        if st.session_state.sala_privada_atual:
-            sala_id = st.session_state.sala_privada_atual
-            outro_usuario = sala_id.replace(user_atual.get('username'), "").replace("_", "")
-            st.markdown(f"### 💬 Sala: **@{user_atual.get('username')}** & **@{outro_usuario}**")
-            
-            if sala_id not in st.session_state.chat_privado_salas: 
-                st.session_state.chat_privado_salas[sala_id] = []
-                
-            for msg in st.session_state.chat_privado_salas[sala_id]:
-                # --- BUSCA A FOTO DO REMETENTE DA MENSAGEM ---
-                foto_avatar = "https://img.icons8.com/colors/150/test-account.png"
-                if msg['remetente'] == user_atual.get('username'):
-                    if user_atual.get('foto_perfil') and str(user_atual.get('foto_perfil')).startswith("http"):
-                        foto_avatar = user_atual.get('foto_perfil')
-                else:
-                    try:
-                        outro_req = supabase.table("perfis_usuarios").select("foto_perfil").eq("username", msg['remetente']).execute()
-                        if outro_req.data and outro_req.data[0].get('foto_perfil'):
-                            if str(outro_req.data[0].get('foto_perfil')).startswith("http"):
-                                foto_avatar = outro_req.data[0].get('foto_perfil')
-                    except:
-                        pass
-                
-                # --- EXIBE O BALÃO COM A FOTO CORRETA ---
-                with st.chat_message("user" if msg['remetente'] == user_atual.get('username') else "assistant", avatar=foto_avatar):
-                    st.write(f"**@{msg['remetente']}:** {msg['conteudo']}")
-            
-            txt = st.text_input("Mensagem:", key="msg_p_input")
-            if st.button("Enviar", use_container_width=True) and txt:
-                st.session_state.chat_privado_salas[sala_id].append({"remetente": user_atual.get('username'), "conteudo": txt})
-                st.rerun()
+    if str.sidebar.button("🚪 Sair do Chat"):
+        banco.auth.sign_out()
+        str.session_state.logado = False
+        str.session_state.usuario_email = ""
+        str.rerun()
 
-    with aba_grp:
-        st.subheader("👥 Grupos por Código")
-        cg1, cg2 = st.columns(2)
-        with cg1:
-            nome_novo_grp = st.text_input("Nome do Grupo:")
-            cod_novo_grp = st.text_input("Código Secreto:", type="password", key="new_grp_cod")
-            if st.button("🏗️ Criar Grupo", use_container_width=True) and nome_novo_grp and cod_novo_grp:
-                st.session_state.chat_grupos[cod_novo_grp] = {"nome": nome_novo_grp, "mensagens": []}
-                st.success("Grupo criado!")
-        with cg2:
-            cod_inserido = st.text_input("Digitar Código:", type="password", key="join_grp_cod")
-            if st.button("🚪 Entrar", use_container_width=True) and cod_inserido in st.session_state.chat_grupos:
-                st.session_state.codigo_grupo_atual = cod_inserido
-                st.session_state.sala_privada_atual = None
-                
-        if st.session_state.codigo_grupo_atual:
-            cod_g = st.session_state.codigo_grupo_atual
-            st.markdown(f"### Grupo: **{st.session_state.chat_grupos[cod_g]['nome']}**")
-            for m_g in st.session_state.chat_grupos[cod_g]['mensagens']: 
-                st.write(f"**@{m_g['remetente']}:** {m_g['conteudo']}")
-            msg_g = st.text_input("Escrever...", key="input_msg_grp")
-            if st.button("Enviar Grupo") and msg_g:
-                st.session_state.chat_grupos[cod_g]['mensagens'].append({"remetente": user_atual.get('username'), "conteudo": msg_g})
-                st.rerun()
+    # Corpo principal do Chat EXV
+    str.title("🚀 Chat EXV — Painel Principal")
+    str.write("Você está conectado! O sistema de autenticação está funcionando.")
+    
+    # [Aqui vamos programar as salas de chat, áudio e fotos nos próximos passos!]
+    str.info("Próximo passo: Criar a tabela de mensagens no Supabase para liberar o chat de texto.")
+    
