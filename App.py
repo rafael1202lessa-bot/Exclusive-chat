@@ -22,7 +22,7 @@ if "logado" not in st.session_state:
     st.session_state.usuario_foto = ""
 
 # =========================================================
-# TELA DE LOGIN / CADASTRO (SISTEMA PRÓPRIO SEM E-MAIL)
+# TELA DE LOGIN / CADASTRO (TABELA PERFIS_USUARIOS)
 # =========================================================
 if not st.session_state.logado:
     st.title("💬 Chat EXV — Entrar no Universo")
@@ -38,8 +38,8 @@ if not st.session_state.logado:
                 st.warning("Preencha o usuário e a senha!")
             else:
                 try:
-                    # Procura o usuário diretamente na nossa tabela
-                    resposta = banco.table("usuarios").select("*").eq("usuario_id", user_login).execute()
+                    # Mudado de "usuarios" para "perfis_usuarios"
+                    resposta = banco.table("perfis_usuarios").select("*").eq("usuario_id", user_login).execute()
                     dados_usuario = resposta.data
                     
                     if len(dados_usuario) > 0 and dados_usuario[0]["senha"] == senha_login:
@@ -65,21 +65,19 @@ if not st.session_state.logado:
             if not user_cad or not nome_exibicao or not senha_cad:
                 st.warning("Por favor, preencha todos os campos!")
             elif " " in user_cad:
-                st.warning("O Nome de Usuário não can conter espaços!")
+                st.warning("O Nome de Usuário não pode conter espaços!")
             else:
                 try:
-                    # Verifica se o ID já existe para não duplicar
-                    checar = banco.table("usuarios").select("*").eq("usuario_id", user_cad).execute()
+                    # Mudado de "usuarios" para "perfis_usuarios"
+                    checar = banco.table("perfis_usuarios").select("*").eq("usuario_id", user_cad).execute()
                     if len(checar.data) > 0:
                         st.error("Este Nome de Usuário já está a ser usado por outra pessoa!")
                     else:
                         foto_url = ""
-                        # Se escolheu uma foto, envia para o Storage
                         if foto_perfil is not None:
                             bytes_foto = foto_perfil.getvalue()
                             nome_arquivo = f"avatar_{user_cad}.png"
                             
-                            # Envia para o bucket
                             banco.storage.from_("avatares").upload(
                                 path=nome_arquivo,
                                 file=bytes_foto,
@@ -87,8 +85,8 @@ if not st.session_state.logado:
                             )
                             foto_url = banco.storage.from_("avatares").get_public_url(nome_arquivo)
                         
-                        # Insere o novo usuário na tabela do banco de dados
-                        banco.table("usuarios").insert({
+                        # Mudado de "usuarios" para "perfis_usuarios"
+                        banco.table("perfis_usuarios").insert({
                             "usuario_id": user_cad,
                             "nome": nome_exibicao,
                             "senha": senha_cad,
@@ -121,5 +119,5 @@ else:
     
     with aba_chat_grupo:
         st.subheader("🌐 Sala Global")
-        st.write("*Pronto para começar a enviar mensagens sem bloqueios!*")
-        
+        st.write("*Pronto para começar a enviar mensagens!*")
+                            
