@@ -346,4 +346,4 @@ else:
                             if str(alvo.data[0]["id"]) == str(user_atual["id"]):
                                 st.error("Não pode se adicionar!")
                             else:
-                                supabase.table("lista_amigos").insert({"id_usuario_envio": user_atual["id"], "id_usuario_recebe": alvo.
+                                supabase.table("lista_amigos").insert({"id_usuario_envio": user_atual["id"], "id_usuario_recebe": alvo.})
