@@ -113,25 +113,55 @@ if not str.session_state.logado:
 # =========================================================
 else:
     # Barra lateral estilizada com a foto e o nome do usuário
-    str.sidebar.title("👤 Seu Perfil EXV")
+    st.sidebar.title("👤 Seu Perfil EXV")
     
-    if str.session_state.usuario_foto:
-        str.sidebar.image(str.session_state.usuario_foto, width=100)
+    if st.session_state.usuario_foto:
+        st.sidebar.image(st.session_state.usuario_foto, width=100)
         
-    str.sidebar.write(f"Nome: **{str.session_state.usuario_nome}**")
-    str.sidebar.write(f"ID: `@{str.session_state.usuario_id}`")
+    st.sidebar.write(f"Nome: **{st.session_state.usuario_nome}**")
+    st.sidebar.write(f"ID: `@{st.session_state.usuario_id}`")
     
-    if str.sidebar.button("🚪 Sair"):
+    if st.sidebar.button("🚪 Sair"):
         banco.auth.sign_out()
-        str.session_state.logado = False
-        str.session_state.usuario_id = ""
-        str.session_state.usuario_nome = "Usuário"
-        str.session_state.usuario_foto = ""
-        str.rerun()
+        st.session_state.logado = False
+        st.session_state.usuario_id = ""
+        st.session_state.usuario_nome = "Usuário"
+        st.session_state.usuario_foto = ""
+        st.rerun()
 
-    # Painel Principal do Chat EXV
-    str.title(f"🚀 Chat EXV — Olá, {str.session_state.usuario_nome}!")
-    str.write("Sistema de contas limpo, sem e-mails e totalmente configurado.")
+    # 🚀 O NOVO PAINEL DO CHAT EXV COM ABAS
+    st.title("💬 Universo Chat EXV")
     
-    str.success("Próximo passo: Criar a área de mensagens de texto!")
+    # Criando as divisões do aplicativo
+    aba_chat_grupo, aba_chat_privado, aba_amigos, aba_ligacao = st.tabs([
+        "👥 Chat em Grupo", 
+        "🔒 Conversa Privada", 
+        "🤝 Adicionar Amigos", 
+        "📞 Ligação EXV"
+    ])
     
+    with aba_chat_grupo:
+        st.subheader("🌐 Sala Global")
+        st.write("*As mensagens do grupo vão aparecer aqui em tempo real...*")
+        # Campo de texto para enviar no grupo
+        msg_grupo = st.text_input("Enviar mensagem para o grupo...", key="input_grupo")
+        col1, col2 = st.columns(2)
+        with col1: st.button("🖼️ Enviar Foto", key="btn_foto_grupo")
+        with col2: st.button("🎤 Enviar Áudio", key="btn_audio_grupo")
+
+    with aba_chat_privado:
+        st.subheader("💬 Mensagens Privadas")
+        st.selectbox("Escolha um amigo para conversar:", ["Nenhum amigo adicionado"])
+        st.write("*Selecione um amigo para abrir o chat privado...*")
+
+    with aba_amigos:
+        st.subheader("🔍 Encontrar Construtores/Amigos")
+        busca_amigo = st.text_input("Digite o @ID do seu amigo:", placeholder="Ex: rafael_oficial")
+        if st.button("🤝 Enviar Solicitação"):
+            st.info("Buscando usuário no banco de dados...")
+
+    with aba_ligacao:
+        st.subheader("📞 Sistema de Chamadas")
+        st.warning("O módulo WebRTC de Voz/Vídeo será configurado após o chat de texto estar funcionando!")
+        st.button("📞 Iniciar Chamada de Voz")
+        
