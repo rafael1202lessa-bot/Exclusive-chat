@@ -1,6 +1,5 @@
 import streamlit as str
 from supabase import create_client, Client
-import mimetypes
 
 # 1. Configuração da página do Streamlit
 str.set_page_config(page_title="Chat EXV", page_icon="💬", layout="centered")
@@ -18,61 +17,70 @@ banco = iniciar_banco()
 # 3. Gerenciar as variáveis de estado do login
 if "logado" not in str.session_state:
     str.session_state.logado = False
-    str.session_state.usuario_email = ""
+    str.session_state.usuario_id = ""
     str.session_state.usuario_nome = "Usuário"
     str.session_state.usuario_foto = ""
 
 # =========================================================
-# TELA DE LOGIN / CADASTRO
+# TELA DE LOGIN / CADASTRO (SEM GMAIL)
 # =========================================================
 if not str.session_state.logado:
-    str.title("💬 Chat EXV — Cadastro e Acesso")
+    str.title("💬 Chat EXV — Entrar no Universo")
     
     aba_login, aba_cadastro = str.tabs(["🔓 Entrar", "✨ Criar Conta"])
     
     with aba_login:
-        email_login = str.text_input("E-mail", key="email_log")
+        user_login = str.text_input("Nome de Usuário", key="user_log", placeholder="Ex: rafael123").strip().lower()
         senha_login = str.text_input("Senha", type="password", key="senha_log")
         
         if str.button("Entrar", key="btn_log"):
-            try:
-                # Fazer login no Supabase
-                resposta = banco.auth.sign_in_with_password({"email": email_login, "password": senha_login})
-                
-                # Buscar o nome e a foto que foram salvos nos metadados do usuário
-                metadados = resposta.user.user_metadata
-                
-                str.session_state.logado = True
-                str.session_state.usuario_email = email_login
-                str.session_state.usuario_nome = metadados.get("nome", "Usuário")
-                str.session_state.usuario_foto = metadados.get("foto_url", "")
-                
-                str.success(f"Bem-vindo de volta, {str.session_state.usuario_nome}!")
-                str.rerun()
-            except Exception as e:
-                str.error(f"Erro ao entrar: {e}")
+            if not user_login or not senha_login:
+                str.warning("Preencha o usuário e a senha!")
+            else:
+                try:
+                    # Transforma o nome de usuário no formato que o Supabase exige internamente
+                    email_interno = f"{user_login}@chatexv.com"
+                    
+                    # Fazer login no Supabase
+                    resposta = banco.auth.sign_in_with_password({"email": email_interno, "password": senha_login})
+                    
+                    # Pegar os dados do perfil salvos
+                    metadados = resposta.user.user_metadata
+                    
+                    str.session_state.logado = True
+                    str.session_state.usuario_id = user_login
+                    str.session_state.usuario_nome = metadados.get("nome", user_login)
+                    str.session_state.usuario_foto = metadados.get("foto_url", "")
+                    
+                    str.success(f"Bem-vindo de volta, {str.session_state.usuario_nome}!")
+                    str.rerun()
+                except Exception as e:
+                    str.error("Usuário ou senha incorretos!")
                 
     with aba_cadastro:
-        nome_cad = str.text_input("Seu Nome / Apelido", key="nome_cad")
-        email_cad = str.text_input("E-mail", key="email_cad")
+        user_cad = str.text_input("Crie um Nome de Usuário único", key="user_cad", placeholder="Ex: rafael123 (Não use espaços)").strip().lower()
+        nome_exibicao = str.text_input("Nome de Exibição (Como os amigos vão te ver)", key="nome_exib", placeholder="Ex: Rafael Lessa")
         senha_cad = str.text_input("Senha (mínimo 6 caracteres)", type="password", key="senha_cad")
         
         # Campo para fazer upload da foto de perfil direto do celular
         foto_perfil = str.file_uploader("Escolha sua foto de perfil", type=["png", "jpg", "jpeg"])
         
         if str.button("Criar Minha Conta", key="btn_cad"):
-            if not nome_cad:
-                str.warning("Por favor, digite o seu nome!")
+            if not user_cad or not nome_exibicao or not list(user_cad):
+                str.warning("Por favor, preencha todos os campos de texto!")
+            elif " " in user_cad:
+                str.warning("O Nome de Usuário não pode conter espaços vazios!")
             elif len(senha_cad) < 6:
                 str.warning("A senha precisa ter pelo menos 6 caracteres!")
             else:
                 try:
                     foto_url = ""
+                    email_interno = f"{user_cad}@chatexv.com"
                     
-                    # Se o usuário escolheu uma foto, vamos subir para o Storage do Supabase
+                    # Se escolheu uma foto, envia para o Storage
                     if foto_perfil is not None:
                         bytes_foto = foto_perfil.getvalue()
-                        nome_arquivo = f"avatar_{email_cad.replace('@', '_').replace('.', '_')}.png"
+                        nome_arquivo = f"avatar_{user_cad}.png"
                         
                         # Envia o arquivo para o bucket 'avatares'
                         banco.storage.from_("avatares").upload(
@@ -84,19 +92,19 @@ if not str.session_state.logado:
                         # Pega o link público da foto enviada
                         foto_url = banco.storage.from_("avatares").get_public_url(nome_arquivo)
                     
-                    # Cria a conta no Supabase salvando o Nome e a URL da foto junto
+                    # Cria a conta usando o email mascarado e salva os dados reais nos metadados
                     resposta = banco.auth.sign_up({
-                        "email": email_cad, 
+                        "email": email_interno, 
                         "password": senha_cad,
                         "options": {
                             "data": {
-                                "nome": nome_cad,
+                                "nome": nome_exibicao,
                                 "foto_url": foto_url
                             }
                         }
                     })
                     
-                    str.success("Conta criada com sucesso com foto e nome! Agora vá na aba 'Entrar'.")
+                    str.success(f"Conta @{user_cad} criada com sucesso! Agora vá na aba 'Entrar'.")
                 except Exception as e:
                     str.error(f"Erro no cadastro: {e}")
 
@@ -105,27 +113,25 @@ if not str.session_state.logado:
 # =========================================================
 else:
     # Barra lateral estilizada com a foto e o nome do usuário
-    str.sidebar.title("👤 Seu Perfil")
+    str.sidebar.title("👤 Seu Perfil EXV")
     
-    # Se o usuário tiver foto, exibe ela redondinha na barra lateral
     if str.session_state.usuario_foto:
         str.sidebar.image(str.session_state.usuario_foto, width=100)
         
     str.sidebar.write(f"Nome: **{str.session_state.usuario_nome}**")
-    str.sidebar.write(f"E-mail: *{str.session_state.usuario_email}*")
+    str.sidebar.write(f"ID: `@{str.session_state.usuario_id}`")
     
-    if str.sidebar.button("🚪 Sair do Chat"):
+    if str.sidebar.button("🚪 Sair"):
         banco.auth.sign_out()
         str.session_state.logado = False
-        str.session_state.usuario_email = ""
+        str.session_state.usuario_id = ""
         str.session_state.usuario_nome = "Usuário"
         str.session_state.usuario_foto = ""
         str.rerun()
 
     # Painel Principal do Chat EXV
     str.title(f"🚀 Chat EXV — Olá, {str.session_state.usuario_nome}!")
-    str.write("O seu perfil está totalmente configurado e autenticado no banco de dados.")
+    str.write("Sistema de contas limpo, sem e-mails e totalmente configurado.")
     
-    # Confirmação visual de que deu certo
-    str.success("Próximo passo: Criar o layout de mensagens privadas e em grupo!")
+    str.success("Próximo passo: Criar a área de mensagens de texto!")
     
