@@ -1,5 +1,6 @@
 import streamlit as str
 from supabase import create_client, Client
+import mimetypes
 
 # 1. Configuração da página do Streamlit
 str.set_page_config(page_title="Chat EXV", page_icon="💬", layout="centered")
@@ -8,25 +9,25 @@ str.set_page_config(page_title="Chat EXV", page_icon="💬", layout="centered")
 SUPABASE_URL = "https://ldjtqgeyorkzbvuichjj.supabase.co"
 SUPABASE_KEY = "sb_publishable_ZWY9Hp6kQrhOzff6xc_DrA_8TlnrqQ_"
 
-# Inicializa o cliente do banco de dados de forma segura no Streamlit
 @str.cache_resource
 def iniciar_banco():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 banco = iniciar_banco()
 
-# 3. Gerenciar o estado do login (saber se o usuário já entrou ou não)
+# 3. Gerenciar as variáveis de estado do login
 if "logado" not in str.session_state:
     str.session_state.logado = False
     str.session_state.usuario_email = ""
+    str.session_state.usuario_nome = "Usuário"
+    str.session_state.usuario_foto = ""
 
 # =========================================================
 # TELA DE LOGIN / CADASTRO
 # =========================================================
 if not str.session_state.logado:
-    str.title("💬 Chat EXV — Entrar no Universo")
+    str.title("💬 Chat EXV — Cadastro e Acesso")
     
-    # Abas para organizar entre Entrar e Criar Conta
     aba_login, aba_cadastro = str.tabs(["🔓 Entrar", "✨ Criar Conta"])
     
     with aba_login:
@@ -35,27 +36,67 @@ if not str.session_state.logado:
         
         if str.button("Entrar", key="btn_log"):
             try:
-                # Tenta fazer o login no Supabase
+                # Fazer login no Supabase
                 resposta = banco.auth.sign_in_with_password({"email": email_login, "password": senha_login})
+                
+                # Buscar o nome e a foto que foram salvos nos metadados do usuário
+                metadados = resposta.user.user_metadata
+                
                 str.session_state.logado = True
                 str.session_state.usuario_email = email_login
-                str.success("Bem-vindo ao Chat EXV!")
-                str.rerun() # Atualiza a tela para mostrar o chat
+                str.session_state.usuario_nome = metadados.get("nome", "Usuário")
+                str.session_state.usuario_foto = metadados.get("foto_url", "")
+                
+                str.success(f"Bem-vindo de volta, {str.session_state.usuario_nome}!")
+                str.rerun()
             except Exception as e:
                 str.error(f"Erro ao entrar: {e}")
                 
     with aba_cadastro:
+        nome_cad = str.text_input("Seu Nome / Apelido", key="nome_cad")
         email_cad = str.text_input("E-mail", key="email_cad")
         senha_cad = str.text_input("Senha (mínimo 6 caracteres)", type="password", key="senha_cad")
         
+        # Campo para fazer upload da foto de perfil direto do celular
+        foto_perfil = str.file_uploader("Escolha sua foto de perfil", type=["png", "jpg", "jpeg"])
+        
         if str.button("Criar Minha Conta", key="btn_cad"):
-            if len(senha_cad) < 6:
+            if not nome_cad:
+                str.warning("Por favor, digite o seu nome!")
+            elif len(senha_cad) < 6:
                 str.warning("A senha precisa ter pelo menos 6 caracteres!")
             else:
                 try:
-                    # Tenta criar a conta no Supabase
-                    resposta = banco.auth.sign_up({"email": email_cad, "password": senha_cad})
-                    str.success("Conta criada com sucesso! Agora vá na aba 'Entrar'.")
+                    foto_url = ""
+                    
+                    # Se o usuário escolheu uma foto, vamos subir para o Storage do Supabase
+                    if foto_perfil is not None:
+                        bytes_foto = foto_perfil.getvalue()
+                        nome_arquivo = f"avatar_{email_cad.replace('@', '_').replace('.', '_')}.png"
+                        
+                        # Envia o arquivo para o bucket 'avatares'
+                        banco.storage.from_("avatares").upload(
+                            path=nome_arquivo,
+                            file=bytes_foto,
+                            file_options={"content-type": "image/png"}
+                        )
+                        
+                        # Pega o link público da foto enviada
+                        foto_url = banco.storage.from_("avatares").get_public_url(nome_arquivo)
+                    
+                    # Cria a conta no Supabase salvando o Nome e a URL da foto junto
+                    resposta = banco.auth.sign_up({
+                        "email": email_cad, 
+                        "password": senha_cad,
+                        "options": {
+                            "data": {
+                                "nome": nome_cad,
+                                "foto_url": foto_url
+                            }
+                        }
+                    })
+                    
+                    str.success("Conta criada com sucesso com foto e nome! Agora vá na aba 'Entrar'.")
                 except Exception as e:
                     str.error(f"Erro no cadastro: {e}")
 
@@ -63,20 +104,28 @@ if not str.session_state.logado:
 # TELA DO APP (SÓ APARECE APÓS O LOGIN)
 # =========================================================
 else:
-    # Barra lateral com informações do usuário e botão de sair
+    # Barra lateral estilizada com a foto e o nome do usuário
     str.sidebar.title("👤 Seu Perfil")
-    str.sidebar.write(f"Conectado como:\n**{str.session_state.usuario_email}**")
+    
+    # Se o usuário tiver foto, exibe ela redondinha na barra lateral
+    if str.session_state.usuario_foto:
+        str.sidebar.image(str.session_state.usuario_foto, width=100)
+        
+    str.sidebar.write(f"Nome: **{str.session_state.usuario_nome}**")
+    str.sidebar.write(f"E-mail: *{str.session_state.usuario_email}*")
     
     if str.sidebar.button("🚪 Sair do Chat"):
         banco.auth.sign_out()
         str.session_state.logado = False
         str.session_state.usuario_email = ""
+        str.session_state.usuario_nome = "Usuário"
+        str.session_state.usuario_foto = ""
         str.rerun()
 
-    # Corpo principal do Chat EXV
-    str.title("🚀 Chat EXV — Painel Principal")
-    str.write("Você está conectado! O sistema de autenticação está funcionando.")
+    # Painel Principal do Chat EXV
+    str.title(f"🚀 Chat EXV — Olá, {str.session_state.usuario_nome}!")
+    str.write("O seu perfil está totalmente configurado e autenticado no banco de dados.")
     
-    # [Aqui vamos programar as salas de chat, áudio e fotos nos próximos passos!]
-    str.info("Próximo passo: Criar a tabela de mensagens no Supabase para liberar o chat de texto.")
+    # Confirmação visual de que deu certo
+    str.success("Próximo passo: Criar o layout de mensagens privadas e em grupo!")
     
