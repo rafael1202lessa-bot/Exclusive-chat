@@ -283,7 +283,7 @@ else:
                         st.markdown("---")
             except:
                 st.write("Erro ao carregar.")
-        else:
+
             # --- 4. ABA CHAT EXV ---
 elif aba_ativa == "💬 Chat EXV":
     st.title("💬 Chat EXV")
