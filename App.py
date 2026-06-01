@@ -284,66 +284,78 @@ else:
             except:
                 st.write("Erro ao carregar.")
         else:
-            st.title("🎛️ Painel Chat-Exv")
-            m_tabs = st.tabs(["💬 Privado", "👨‍👩‍👦 Novo Grupo", "🔑 Entrar", "👥 Amigos", "➕ Adicionar"])
-            with m_tabs[0]:
-                try:
-                    amg = supabase.table("lista_amigos").select("*").or_(f"id_usuario_envio.eq.{user_atual['id']},id_usuario_recebe.eq.{user_atual['id']}").eq("status", "aceito").execute()
-                    nomes = []
-                    m_ids = {}
-                    for a in amg.data:
-                        o_id = a["id_usuario_recebe"] if str(a["id_usuario_envio"]) == str(user_atual["id"]) else a["id_usuario_envio"]
-                        du = supabase.table("perfis_usuarios").select("username").eq("id", o_id).execute()
-                        if du.data:
-                            n = du.data[0]["username"]
-                            nomes.append(n)
-                            m_ids[n] = o_id
-                    if nomes:
-                        alvo = st.selectbox("Amigo:", nomes)
-                        if st.button("Abrir Conversa Particular 🚀", use_container_width=True):
-                            ids = sorted([str(user_atual["id"]), str(m_ids[alvo])])
-                            st.session_state.sala_ativa = f"PRIVADO-{ids[0][:8]}-{ids[1][:8]}"
-                            st.rerun()
-                    else:
-                        st.info("Sem amigos aceitos.")
-                except:
-                    st.write("Erro.")
-            with m_tabs[1]:
-                n_grp = st.text_input("Grupo:")
-                if st.button("Criar Grupo 🎉", use_container_width=True) and n_grp:
-                    cod = f"GRUPO-{str(uuid.uuid4())[:8].upper()}"
-                    supabase.table("salas_chat").insert({"codigo_sala": cod, "nome_sala": n_grp, "tipo": "grupo"}).execute()
-                    st.success(f"Código: {cod}")
-            with m_tabs[2]:
-                cod_d = st.text_input("Código:").strip().upper()
-                if st.button("Entrar 🚪", use_container_width=True) and cod_d:
-                    st.session_state.sala_ativa = cod_d
-                    st.rerun()
-            with m_tabs[3]:
-                try:
-                    peds = supabase.table("lista_amigos").select("*").eq("id_usuario_recebe", user_atual["id"]).eq("status", "pendente").execute()
-                    for p in peds.data:
-                        dr = supabase.table("perfis_usuarios").select("username").eq("id", p["id_usuario_envio"]).execute()
-                        if dr.data:
-                            st.write(f"Pedido de: **{dr.data[0]['username']}**")
-                            if st.button("Aceitar", key=f"ac_{p['id']}"):
-                                supabase.table("lista_amigos").update({"status": "aceito"}).eq("id", p["id"]).execute()
-                                st.rerun()
-                    conf = supabase.table("lista_amigos").select("*").or_(f"id_usuario_envio.eq.{user_atual['id']},id_usuario_recebe.eq.{user_atual['id']}").eq("status", "aceito").execute()
-                    for c in conf.data:
-                        o_id = c["id_usuario_recebe"] if str(c["id_usuario_envio"]) == str(user_atual["id"]) else c["id_usuario_envio"]
-                        du = supabase.table("perfis_usuarios").select("username").eq("id", o_id).execute()
-                        if du.data:
-                            st.write(f"🟢 {du.data[0]['username']}")
-                except:
-                    pass
-            with m_tabs[4]:
-                b_amg = st.text_input("Usuário para adicionar:").strip()
-                if st.button("Enviar Pedido ➕", use_container_width=True) and b_amg:
+            # --- 4. ABA CHAT EXV ---
+elif aba_ativa == "💬 Chat EXV":
+    st.title("💬 Chat EXV")
+    aba_dm, aba_grp = st.tabs(["🔒 Conversas Privadas", "👥 Grupos por Código"])
+    
+    with aba_dm:
+        try:
+            todos_req = supabase.table("perfis_usuarios").select("username, nickname").execute()
+            lista_usuarios = [u for u in todos_req.data if u['username'] != user_atual.get('username')]
+        except: 
+            lista_usuarios = []
+        
+        if lista_usuarios:
+            opcoes_usuarios = {u['username']: f"{u['nickname']} (@{u['username']})" for u in lista_usuarios}
+            usuario_selecionado = st.selectbox("Abrir sala com:", list(opcoes_usuarios.keys()), format_func=lambda x: opcoes_usuarios[x])
+            if st.button("🚪 Entrar na Sala Privada", use_container_width=True):
+                st.session_state.sala_privada_atual = obter_id_sala_privada(user_atual.get('username'), usuario_selecionado)
+                st.session_state.codigo_grupo_atual = None
+        
+        if st.session_state.sala_privada_atual:
+            sala_id = st.session_state.sala_privada_atual
+            outro_usuario = sala_id.replace(user_atual.get('username'), "").replace("_", "")
+            st.markdown(f"### 💬 Sala: **@{user_atual.get('username')}** & **@{outro_usuario}**")
+            
+            if sala_id not in st.session_state.chat_privado_salas: 
+                st.session_state.chat_privado_salas[sala_id] = []
+                
+            for msg in st.session_state.chat_privado_salas[sala_id]:
+                # --- BUSCA A FOTO DO REMETENTE DA MENSAGEM ---
+                foto_avatar = "https://img.icons8.com/colors/150/test-account.png"
+                if msg['remetente'] == user_atual.get('username'):
+                    if user_atual.get('foto_perfil') and str(user_atual.get('foto_perfil')).startswith("http"):
+                        foto_avatar = user_atual.get('foto_perfil')
+                else:
                     try:
-                        alvo = supabase.table("perfis_usuarios").select("*").eq("username", b_amg).execute()
-                        if alvo.data:
-                            if str(alvo.data[0]["id"]) == str(user_atual["id"]):
-                                st.error("Não pode se adicionar!")
-                            else:
-                                supabase.table("lista_amigos").insert({"id_usuario_envio": user_atual["id"], "id_usuario_recebe": alvo.})
+                        outro_req = supabase.table("perfis_usuarios").select("foto_perfil").eq("username", msg['remetente']).execute()
+                        if outro_req.data and outro_req.data[0].get('foto_perfil'):
+                            if str(outro_req.data[0].get('foto_perfil')).startswith("http"):
+                                foto_avatar = outro_req.data[0].get('foto_perfil')
+                    except:
+                        pass
+                
+                # --- EXIBE O BALÃO COM A FOTO CORRETA ---
+                with st.chat_message("user" if msg['remetente'] == user_atual.get('username') else "assistant", avatar=foto_avatar):
+                    st.write(f"**@{msg['remetente']}:** {msg['conteudo']}")
+            
+            txt = st.text_input("Mensagem:", key="msg_p_input")
+            if st.button("Enviar", use_container_width=True) and txt:
+                st.session_state.chat_privado_salas[sala_id].append({"remetente": user_atual.get('username'), "conteudo": txt})
+                st.rerun()
+
+    with aba_grp:
+        st.subheader("👥 Grupos por Código")
+        cg1, cg2 = st.columns(2)
+        with cg1:
+            nome_novo_grp = st.text_input("Nome do Grupo:")
+            cod_novo_grp = st.text_input("Código Secreto:", type="password", key="new_grp_cod")
+            if st.button("🏗️ Criar Grupo", use_container_width=True) and nome_novo_grp and cod_novo_grp:
+                st.session_state.chat_grupos[cod_novo_grp] = {"nome": nome_novo_grp, "mensagens": []}
+                st.success("Grupo criado!")
+        with cg2:
+            cod_inserido = st.text_input("Digitar Código:", type="password", key="join_grp_cod")
+            if st.button("🚪 Entrar", use_container_width=True) and cod_inserido in st.session_state.chat_grupos:
+                st.session_state.codigo_grupo_atual = cod_inserido
+                st.session_state.sala_privada_atual = None
+                
+        if st.session_state.codigo_grupo_atual:
+            cod_g = st.session_state.codigo_grupo_atual
+            st.markdown(f"### Grupo: **{st.session_state.chat_grupos[cod_g]['nome']}**")
+            for m_g in st.session_state.chat_grupos[cod_g]['mensagens']: 
+                st.write(f"**@{m_g['remetente']}:** {m_g['conteudo']}")
+            msg_g = st.text_input("Escrever...", key="input_msg_grp")
+            if st.button("Enviar Grupo") and msg_g:
+                st.session_state.chat_grupos[cod_g]['mensagens'].append({"remetente": user_atual.get('username'), "conteudo": msg_g})
+                st.rerun()
