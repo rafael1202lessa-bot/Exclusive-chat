@@ -38,7 +38,6 @@ if not st.session_state.logado:
                 st.warning("Preencha o usuário e a senha!")
             else:
                 try:
-                    # Busca o usuário na nova tabela perfis_exv
                     resposta = banco.table("perfis_exv").select("*").eq("usuario_id", user_login).execute()
                     dados_usuario = resposta.data
                     
@@ -68,13 +67,11 @@ if not st.session_state.logado:
                 st.warning("O Nome de Usuário (Nick) não pode conter espaços!")
             else:
                 try:
-                    # Checa se o nick já existe
                     checar = banco.table("perfis_exv").select("*").eq("usuario_id", user_cad).execute()
                     if len(checar.data) > 0:
                         st.error("Este Nome de Usuário já está sendo usado!")
                     else:
                         foto_url = ""
-                        # Faz o upload da foto se o usuário escolheu uma
                         if foto_perfil is not None:
                             try:
                                 bytes_foto = foto_perfil.getvalue()
@@ -87,10 +84,8 @@ if not st.session_state.logado:
                                 )
                                 foto_url = banco.storage.from_("avatares").get_public_url(nome_arquivo)
                             except Exception:
-                                # Se o storage der erro por falta do bucket, usa uma imagem padrão provisória
                                 foto_url = "https://cdn-icons-png.flaticon.com/512/149/149071.png"
                         
-                        # Salva tudo na nova tabela com os nomes de colunas perfeitos
                         dados_salvar = {
                             "usuario_id": user_cad,
                             "nome_exibicao": nome_exib_cad,
@@ -107,7 +102,6 @@ if not st.session_state.logado:
 # TELA DO APP COM ABAS (SÓ APARECE APÓS O LOGIN)
 # =========================================================
 else:
-    # Barra lateral com Foto e Nome restaurados!
     st.sidebar.title("👤 Seu Perfil EXV")
     if st.session_state.usuario_foto:
         st.sidebar.image(st.session_state.usuario_foto, width=100)
@@ -125,9 +119,44 @@ else:
     ])
     
     with aba_chat_grupo:
-        st.subheader("🌐 Sala Global")
-        st.write(f"Olá **{st.session_state.usuario_nome}**, bem-vindo ao grupo!")
+        st.subheader("🌐 Sala Global do Chat EXV")
         
-        # O campo de mensagens pronto para o próximo passo!
-        msg_grupo = st.text_input("Enviar mensagem para o grupo...", key="input_grupo")
+        # 1. Buscar mensagens do grupo no Supabase (crie uma tabela chamada 'mensagens_grupo' no Supabase se ainda não tiver)
+        try:
+            resp_msgs = banco.table("mensagens_grupo").select("*").order("created_at", desc=False).execute()
+            lista_mensagens = resp_msgs.data
+        except Exception:
+            lista_mensagens = []
             
+        # 2. Exibir o histórico de conversas
+        chat_container = st.container()
+        with chat_container:
+            if lista_mensagens:
+                for m in lista_mensagens:
+                    remetente = m.get("usuario_id", "Desconhecido")
+                    texto_msg = m.get("texto", "")
+                    nome_exib = m.get("nome_exibicao", remetente)
+                    
+                    if remetente == st.session_state.usuario_id:
+                        st.markdown(f"💬 **Você ({nome_exib}):** {texto_msg}")
+                    else:
+                        st.markdown(f"💬 **{nome_exib}:** {texto_msg}")
+            else:
+                st.info("Nenhuma mensagem na sala global ainda. Mande a primeira!")
+
+        # 3. Caixa de envio utilizando form para limpar o input automaticamente após enviar
+        with st.form(key="form_envio_grupo", clear_on_submit=True):
+            msg_grupo = st.text_input("Escreva sua mensagem para o grupo...", placeholder="Digite aqui...")
+            btn_enviar_grupo = st.form_submit_button("Enviar Mensagem 🚀")
+            
+            if btn_enviar_grupo and msg_grupo.strip():
+                try:
+                    banco.table("mensagens_grupo").insert({
+                        "usuario_id": st.session_state.usuario_id,
+                        "nome_exibicao": st.session_state.usuario_nome,
+                        "texto": msg_grupo.strip()
+                    }).execute()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao enviar mensagem. Certifique-se de que a tabela 'mensagens_grupo' existe no Supabase. Erro: {e}")
+        
