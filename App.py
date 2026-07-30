@@ -158,22 +158,37 @@ else:
                 except Exception as e:
                     st.error(f"Erro ao enviar mensagem: {e}")
 
-    # --- ABA 2: CONVERSA PRIVADA ---
+    # --- ABA 2: CONVERSA PRIVADA (SÓ COM AMIGOS ACEITOS) ---
     with aba_chat_privado:
         st.subheader("🔒 Mensagens Privadas (Direct)")
         
         try:
-            resp_perfis = banco.table("perfis_exv").select("usuario_id, nome_exibicao").neq("usuario_id", st.session_state.usuario_id).execute()
-            outros_usuarios = resp_perfis.data
+            # Busca apenas amigos cujo status seja 'aceito' envolvendo o usuário logado
+            resp_amigos_aceitos = banco.table("amigos_exv").select("*").eq("status", "aceito").or_(
+                f"usuario_id.eq.{st.session_state.usuario_id},amigo_id.eq.{st.session_state.usuario_id}"
+            ).execute()
+            
+            amigos_ids = []
+            for rel in resp_amigos_aceitos.data:
+                if rel["usuario_id"] == st.session_state.usuario_id:
+                    amigos_ids.append(rel["amigo_id"])
+                else:
+                    amigos_ids.append(rel["usuario_id"])
+                    
+            # Puxa os detalhes dos amigos aceitos
+            meus_amigos_detalhes = []
+            if amigos_ids:
+                resp_detalhes = banco.table("perfis_exv").select("usuario_id, nome_exibicao").in_("usuario_id", amigos_ids).execute()
+                meus_amigos_detalhes = resp_detalhes.data
         except Exception:
-            outros_usuarios = []
+            meus_amigos_detalhes = []
             
-        if not outros_usuarios:
-            st.info("Ainda não há outros usuários cadastrados para conversar em privado.")
+        if not meus_amigos_detalhes:
+            st.info("Você ainda não tem amigos aceitos para conversar no privado. Vá na aba 'Adicionar Amigos' e aceite ou envie um pedido!")
         else:
-            opcoes_amigos = {f"{u['nome_exibicao']} (@{u['usuario_id']})": u['usuario_id'] for u in outros_usuarios}
+            opcoes_amigos = {f"{u['nome_exibicao']} (@{u['usuario_id']})": u['usuario_id'] for u in meus_amigos_detalhes}
             
-            amigo_escolhido_label = st.selectbox("Escolha com quem quer conversar:", list(opcoes_amigos.keys()))
+            amigo_escolhido_label = st.selectbox("Escolha um amigo para conversar:", list(opcoes_amigos.keys()))
             destinatario_id = opcoes_amigos[amigo_escolhido_label]
             
             st.markdown("---")
@@ -214,14 +229,14 @@ else:
                     except Exception as e:
                         st.error(f"Erro ao enviar mensagem privada: {e}")
 
-    # --- ABA 3: ADICIONAR AMIGOS ---
+    # --- ABA 3: ADICIONAR AMIGOS & PEDIDOS ---
     with aba_amigos:
-        st.subheader("🤝 Gerenciar Amigos")
+        st.subheader("🤝 Gerenciar Amigos e Pedidos")
         
-        # Campo para buscar e adicionar amigo pelo ID
+        # Enviar pedido
         with st.form(key="form_adicionar_amigo", clear_on_submit=True):
-            nick_busca = st.text_input("Adicionar amigo por ID (Nick):", placeholder="Ex: joao123").strip().lower()
-            btn_add = st.form_submit_button("Adicionar Amigo ➕")
+            nick_busca = st.text_input("Enviar pedido de amizade para (Nick):", placeholder="Ex: joao123").strip().lower()
+            btn_add = st.form_submit_button("Enviar Pedido ➕")
             
             if btn_add:
                 if not nick_busca:
@@ -230,65 +245,102 @@ else:
                     st.warning("Você não pode adicionar a si mesmo!")
                 else:
                     try:
-                        # Verifica se o usuário existe na tabela de perfis
                         busca_usuario = banco.table("perfis_exv").select("*").eq("usuario_id", nick_busca).execute()
                         
                         if len(busca_usuario.data) == 0:
                             st.error("Usuário não encontrado! Verifique o Nick digitado.")
                         else:
-                            # Verifica se já são amigos
-                            ja_sao_amigos = banco.table("amigos_exv").select("*").eq("usuario_id", st.session_state.usuario_id).eq("amigo_id", nick_busca).execute()
+                            # Checa se já existe alguma relação (pendente ou aceita em qualquer direção)
+                            ja_existe = banco.table("amigos_exv").select("*").or_(
+                                f"and(usuario_id.eq.{st.session_state.usuario_id},amigo_id.eq.{nick_busca}),and(usuario_id.eq.{nick_busca},amigo_id.eq.{st.session_state.usuario_id})"
+                            ).execute()
                             
-                            if len(ja_sao_amigos.data) > 0:
-                                st.warning("Vocês já são amigos!")
+                            if len(ja_existe.data) > 0:
+                                st.warning("Já existe um pedido de amizade ou vocês já são amigos!")
                             else:
-                                # Adiciona na tabela de amigos
+                                # Envia o pedido com status 'pendente'
                                 banco.table("amigos_exv").insert({
                                     "usuario_id": st.session_state.usuario_id,
                                     "amigo_id": nick_busca,
-                                    "status": "aceito"
+                                    "status": "pendente"
                                 }).execute()
-                                st.success(f"@{nick_busca} foi adicionado à sua lista de amigos com sucesso!")
+                                st.success(f"Pedido de amizade enviado para @{nick_busca} com sucesso! 🚀")
                                 st.rerun()
                     except Exception as e:
-                        st.error(f"Erro ao adicionar amigo: {e}")
+                        st.error(f"Erro ao enviar pedido: {e}")
                         
         st.markdown("---")
-        st.subheader("📋 Sua Lista de Amigos")
         
+        # 1. PEDIDOS RECEBIDOS PENDENTES
+        st.subheader("📥 Pedidos de Amizade Recebidos")
         try:
-            # Busca os amigos do usuário logado
-            resp_amigos = banco.table("amigos_exv").select("amigo_id").eq("usuario_id", st.session_state.usuario_id).execute()
-            meus_amigos = resp_amigos.data
+            resp_pedidos = banco.table("amigos_exv").select("*").eq("amigo_id", st.session_state.usuario_id).eq("status", "pendente").execute()
+            pedidos_recebidos = resp_pedidos.data
             
-            if meus_amigos:
-                for a in meus_amigos:
-                    id_amigo = a.get("amigo_id")
-                    # Puxa os dados de exibição do amigo
-                    dados_amigo = banco.table("perfis_exv").select("nome_exibicao, foto_url").eq("usuario_id", id_amigo).execute()
+            if pedidos_recebidos:
+                for p in pedidos_recebidos:
+                    quem_mandou = p["usuario_id"]
                     
-                    if len(dados_amigo.data) > 0:
-                        info = dados_amigo.data[0]
-                        nome_exib = info.get("nome_exibicao", id_amigo)
-                        foto = info.get("foto_url", "")
-                        
-                        col1, col2 = st.columns([1, 4])
-                        with col1:
-                            if foto:
-                                st.image(foto, width=50)
-                            else:
-                                st.write("👤")
-                        with col2:
-                            st.write(f"**{nome_exib}** (`@{id_amigo}`)")
-                    else:
-                        st.write(f"👤 `@{id_amigo}`")
+                    # Puxa o nome de exibição de quem mandou
+                    info_quem = banco.table("perfis_exv").select("nome_exibicao").eq("usuario_id", quem_mandou).execute()
+                    nome_quem = info_quem.data[0]["nome_exibicao"] if info_quem.data else quem_mandou
+                    
+                    col_p1, col_p2, col_p3 = st.columns([3, 1, 1])
+                    with col_p1:
+                        st.write(f"**{nome_quem}** (`@{quem_mandou}`) quer ser seu amigo.")
+                    with col_p2:
+                        if st.button("Aceitar ✅", key=f"aceitar_{quem_mandou}"):
+                            banco.table("amigos_exv").update({"status": "aceito"}).eq("id", p["id"]).execute()
+                            st.success("Pedido aceito!")
+                            st.rerun()
+                    with col_p3:
+                        if st.button("Recusar ❌", key=f"recusar_{quem_mandou}"):
+                            banco.table("amigos_exv").delete().eq("id", p["id"]).execute()
+                            st.rerun()
             else:
-                st.info("Você ainda não tem amigos adicionados. Digite um Nick acima para começar!")
+                st.info("Nenhum pedido de amizade pendente no momento.")
         except Exception as e:
-            st.warning("Carregando lista de amigos...")
+            st.info("Carregando pedidos...")
+
+        st.markdown("---")
+        
+        # 2. LISTA DE AMIGOS JÁ ACEITOS
+        st.subheader("📋 Seus Amigos")
+        try:
+            resp_amigos_ok = banco.table("amigos_exv").select("*").eq("status", "aceito").or_(
+                f"usuario_id.eq.{st.session_state.usuario_id},amigo_id.eq.{st.session_state.usuario_id}"
+            ).execute()
+            
+            ids_amigos_ok = []
+            for rel in resp_amigos_ok.data:
+                if rel["usuario_id"] == st.session_state.usuario_id:
+                    ids_amigos_ok.append(rel["amigo_id"])
+                else:
+                    ids_amigos_ok.append(rel["usuario_id"])
+                    
+            if ids_amigos_ok:
+                resp_perfis_amigos = banco.table("perfis_exv").select("usuario_id, nome_exibicao, foto_url").in_("usuario_id", ids_amigos_ok).execute()
+                
+                for fa in resp_perfis_amigos.data:
+                    id_amig = fa["usuario_id"]
+                    nome_amig = fa["nome_exibicao"]
+                    foto_amig = fa["foto_url"]
+                    
+                    col1, col2 = st.columns([1, 4])
+                    with col1:
+                        if foto_amig:
+                            st.image(foto_amig, width=50)
+                        else:
+                            st.write("👤")
+                    with col2:
+                        st.write(f"**{nome_amig}** (`@{id_amig}`) — *Amigos*")
+            else:
+                st.info("Você ainda não tem amigos adicionados na sua lista.")
+        except Exception:
+            st.info("Carregando lista...")
 
     # --- ABA 4: LIGAÇÃO EXV ---
     with aba_ligacao:
         st.subheader("📞 Ligação EXV")
-        st.write("Em breve: chamadas de vídeo e voz no app!")
-                    
+        st.write("Em breve: chamadas de voz e vídeo no app!")
+                                
