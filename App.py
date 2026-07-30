@@ -1,5 +1,6 @@
 import streamlit as st
 from supabase import create_client, Client
+from audio_recorder_streamlit import audio_recorder
 
 # 1. Configuração da página do Streamlit
 st.set_page_config(page_title="Chat EXV", page_icon="💬", layout="centered")
@@ -94,7 +95,7 @@ if not st.session_state.logado:
                         }
                         
                         banco.table("perfis_exv").insert(dados_salvar).execute()
-                        st.success(f"Conta @{user_cad} criada com sucesso! Já pode entrar na aba correspondente.")
+                        st.success(f"Conta @{user_cad} criada com sucesso! Já pode entrar.")
                 except Exception as e:
                     st.error(f"Erro no cadastro: {e}")
 
@@ -114,8 +115,8 @@ else:
 
     st.title("💬 Universo Chat EXV")
     
-    aba_chat_grupo, aba_chat_privado, aba_amigos, aba_ligacao = st.tabs([
-        "👥 Chat em Grupo", "🔒 Conversa Privada", "🤝 Adicionar Amigos", "📞 Ligação EXV"
+    aba_chat_grupo, aba_chat_privado, aba_amigos, aba_audios = st.tabs([
+        "👥 Chat em Grupo", "🔒 Conversa Privada", "🤝 Adicionar Amigos", "🎙️ Recados de Voz"
     ])
     
     # --- ABA 1: CHAT EM GRUPO ---
@@ -141,10 +142,10 @@ else:
                     else:
                         st.markdown(f"💬 **{nome_exib}:** {texto_msg}")
             else:
-                st.info("Nenhuma mensagem na sala global ainda. Mande a primeira!")
+                st.info("Nenhuma mensagem na sala global ainda.")
 
         with st.form(key="form_envio_grupo", clear_on_submit=True):
-            msg_grupo = st.text_input("Escreva sua mensagem para o grupo...", placeholder="Digite aqui...")
+            msg_grupo = st.text_input("Escreva sua mensagem...", placeholder="Digite aqui...")
             btn_enviar_grupo = st.form_submit_button("Enviar Mensagem 🚀")
             
             if btn_enviar_grupo and msg_grupo.strip():
@@ -156,14 +157,13 @@ else:
                     }).execute()
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Erro ao enviar mensagem: {e}")
+                    st.error(f"Erro ao enviar: {e}")
 
-    # --- ABA 2: CONVERSA PRIVADA (SÓ COM AMIGOS ACEITOS) ---
+    # --- ABA 2: CONVERSA PRIVADA ---
     with aba_chat_privado:
         st.subheader("🔒 Mensagens Privadas (Direct)")
         
         try:
-            # Busca apenas amigos cujo status seja 'aceito' envolvendo o usuário logado
             resp_amigos_aceitos = banco.table("amigos_exv").select("*").eq("status", "aceito").or_(
                 f"usuario_id.eq.{st.session_state.usuario_id},amigo_id.eq.{st.session_state.usuario_id}"
             ).execute()
@@ -175,7 +175,6 @@ else:
                 else:
                     amigos_ids.append(rel["usuario_id"])
                     
-            # Puxa os detalhes dos amigos aceitos
             meus_amigos_detalhes = []
             if amigos_ids:
                 resp_detalhes = banco.table("perfis_exv").select("usuario_id, nome_exibicao").in_("usuario_id", amigos_ids).execute()
@@ -184,11 +183,10 @@ else:
             meus_amigos_detalhes = []
             
         if not meus_amigos_detalhes:
-            st.info("Você ainda não tem amigos aceitos para conversar no privado. Vá na aba 'Adicionar Amigos' e aceite ou envie um pedido!")
+            st.info("Você precisa ter amigos aceitos para conversar no privado.")
         else:
             opcoes_amigos = {f"{u['nome_exibicao']} (@{u['usuario_id']})": u['usuario_id'] for u in meus_amigos_detalhes}
-            
-            amigo_escolhido_label = st.selectbox("Escolha um amigo para conversar:", list(opcoes_amigos.keys()))
+            amigo_escolhido_label = st.selectbox("Escolha um amigo:", list(opcoes_amigos.keys()))
             destinatario_id = opcoes_amigos[amigo_escolhido_label]
             
             st.markdown("---")
@@ -210,9 +208,9 @@ else:
                         if rem == st.session_state.usuario_id:
                             st.markdown(f"🔒 **Você:** {txt}")
                         else:
-                            st.markdown(f"🔒 **{amigo_escolhido_label.split(' ')[0]}:** {txt}")
+                            st.markdown(f"🔒 **Amigo:** {txt}")
                 else:
-                    st.info(f"Nenhuma mensagem privada com {amigo_escolhido_label.split(' ')[0]} ainda. Mande a primeira!")
+                    st.info("Nenhuma mensagem privada ainda.")
             
             with st.form(key="form_envio_privado", clear_on_submit=True):
                 msg_privada = st.text_input("Escreva sua mensagem secreta...", placeholder="Digite aqui...")
@@ -227,13 +225,12 @@ else:
                         }).execute()
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Erro ao enviar mensagem privada: {e}")
+                        st.error(f"Erro: {e}")
 
-    # --- ABA 3: ADICIONAR AMIGOS & PEDIDOS ---
+    # --- ABA 3: ADICIONAR AMIGOS ---
     with aba_amigos:
-        st.subheader("🤝 Gerenciar Amigos e Pedidos")
+        st.subheader("🤝 Gerenciar Amigos")
         
-        # Enviar pedido
         with st.form(key="form_adicionar_amigo", clear_on_submit=True):
             nick_busca = st.text_input("Enviar pedido de amizade para (Nick):", placeholder="Ex: joao123").strip().lower()
             btn_add = st.form_submit_button("Enviar Pedido ➕")
@@ -248,31 +245,27 @@ else:
                         busca_usuario = banco.table("perfis_exv").select("*").eq("usuario_id", nick_busca).execute()
                         
                         if len(busca_usuario.data) == 0:
-                            st.error("Usuário não encontrado! Verifique o Nick digitado.")
+                            st.error("Usuário não encontrado!")
                         else:
-                            # Checa se já existe alguma relação (pendente ou aceita em qualquer direção)
                             ja_existe = banco.table("amigos_exv").select("*").or_(
                                 f"and(usuario_id.eq.{st.session_state.usuario_id},amigo_id.eq.{nick_busca}),and(usuario_id.eq.{nick_busca},amigo_id.eq.{st.session_state.usuario_id})"
                             ).execute()
                             
                             if len(ja_existe.data) > 0:
-                                st.warning("Já existe um pedido de amizade ou vocês já são amigos!")
+                                st.warning("Já existe um pedido ou vocês já são amigos!")
                             else:
-                                # Envia o pedido com status 'pendente'
                                 banco.table("amigos_exv").insert({
                                     "usuario_id": st.session_state.usuario_id,
                                     "amigo_id": nick_busca,
                                     "status": "pendente"
                                 }).execute()
-                                st.success(f"Pedido de amizade enviado para @{nick_busca} com sucesso! 🚀")
+                                st.success(f"Pedido enviado para @{nick_busca}!")
                                 st.rerun()
                     except Exception as e:
-                        st.error(f"Erro ao enviar pedido: {e}")
+                        st.error(f"Erro: {e}")
                         
         st.markdown("---")
-        
-        # 1. PEDIDOS RECEBIDOS PENDENTES
-        st.subheader("📥 Pedidos de Amizade Recebidos")
+        st.subheader("📥 Pedidos Recebidos")
         try:
             resp_pedidos = banco.table("amigos_exv").select("*").eq("amigo_id", st.session_state.usuario_id).eq("status", "pendente").execute()
             pedidos_recebidos = resp_pedidos.data
@@ -280,67 +273,44 @@ else:
             if pedidos_recebidos:
                 for p in pedidos_recebidos:
                     quem_mandou = p["usuario_id"]
-                    
-                    # Puxa o nome de exibição de quem mandou
-                    info_quem = banco.table("perfis_exv").select("nome_exibicao").eq("usuario_id", quem_mandou).execute()
-                    nome_quem = info_quem.data[0]["nome_exibicao"] if info_quem.data else quem_mandou
-                    
                     col_p1, col_p2, col_p3 = st.columns([3, 1, 1])
                     with col_p1:
-                        st.write(f"**{nome_quem}** (`@{quem_mandou}`) quer ser seu amigo.")
+                        st.write(f"@{quem_mandou} quer ser seu amigo.")
                     with col_p2:
                         if st.button("Aceitar ✅", key=f"aceitar_{quem_mandou}"):
                             banco.table("amigos_exv").update({"status": "aceito"}).eq("id", p["id"]).execute()
-                            st.success("Pedido aceito!")
                             st.rerun()
                     with col_p3:
                         if st.button("Recusar ❌", key=f"recusar_{quem_mandou}"):
                             banco.table("amigos_exv").delete().eq("id", p["id"]).execute()
                             st.rerun()
             else:
-                st.info("Nenhum pedido de amizade pendente no momento.")
-        except Exception as e:
-            st.info("Carregando pedidos...")
-
-        st.markdown("---")
-        
-        # 2. LISTA DE AMIGOS JÁ ACEITOS
-        st.subheader("📋 Seus Amigos")
-        try:
-            resp_amigos_ok = banco.table("amigos_exv").select("*").eq("status", "aceito").or_(
-                f"usuario_id.eq.{st.session_state.usuario_id},amigo_id.eq.{st.session_state.usuario_id}"
-            ).execute()
-            
-            ids_amigos_ok = []
-            for rel in resp_amigos_ok.data:
-                if rel["usuario_id"] == st.session_state.usuario_id:
-                    ids_amigos_ok.append(rel["amigo_id"])
-                else:
-                    ids_amigos_ok.append(rel["usuario_id"])
-                    
-            if ids_amigos_ok:
-                resp_perfis_amigos = banco.table("perfis_exv").select("usuario_id, nome_exibicao, foto_url").in_("usuario_id", ids_amigos_ok).execute()
-                
-                for fa in resp_perfis_amigos.data:
-                    id_amig = fa["usuario_id"]
-                    nome_amig = fa["nome_exibicao"]
-                    foto_amig = fa["foto_url"]
-                    
-                    col1, col2 = st.columns([1, 4])
-                    with col1:
-                        if foto_amig:
-                            st.image(foto_amig, width=50)
-                        else:
-                            st.write("👤")
-                    with col2:
-                        st.write(f"**{nome_amig}** (`@{id_amig}`) — *Amigos*")
-            else:
-                st.info("Você ainda não tem amigos adicionados na sua lista.")
+                st.info("Nenhum pedido pendente.")
         except Exception:
-            st.info("Carregando lista...")
+            pass
 
-    # --- ABA 4: LIGAÇÃO EXV ---
-    with aba_ligacao:
-        st.subheader("📞 Ligação EXV")
-        st.write("Em breve: chamadas de voz e vídeo no app!")
-                                
+    # --- ABA 4: RECADOS DE VOZ (ÁUDIO NO CELULAR) ---
+    with aba_audios:
+        st.subheader("🎙️ Gravar Recado de Voz (Walkie-Talkie)")
+        st.markdown("Toque no botão do microfone abaixo para gravar sua voz direto pelo celular e ouça os recados enviados:")
+        
+        # Widget para gravar áudio direto no navegador mobile
+        audio_bytes = audio_recorder(
+            text="Toque para Gravar",
+            recording_color="#e74c3c",
+            neutral_color="#3498db",
+            icon_size="2x"
+        )
+        
+        if audio_bytes:
+            st.audio(audio_bytes, format="audio/wav")
+            st.success("Áudio gravado com sucesso! (Você pode ouvi-lo acima antes de enviar)")
+            
+            if st.button("Enviar Áudio para o Chat Global 🚀"):
+                try:
+                    # Converte o áudio em bytes para base64 ou salva no Supabase Storage se preferir,
+                    # ou reproduz temporariamente.
+                    st.info("Áudio capturado! Para salvar permanentemente para todos ouvirem, você pode armazenar no Supabase Storage na tabela de áudios.")
+                except Exception as e:
+                    st.error(f"Erro ao enviar áudio: {e}")
+    
