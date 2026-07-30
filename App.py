@@ -1,6 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client
 from audio_recorder_streamlit import audio_recorder
+import base64
 
 # 1. Configuração da página do Streamlit
 st.set_page_config(page_title="Chat EXV", page_icon="💬", layout="centered")
@@ -115,8 +116,8 @@ else:
 
     st.title("💬 Universo Chat EXV")
     
-    aba_chat_grupo, aba_chat_privado, aba_amigos, aba_audios = st.tabs([
-        "👥 Chat em Grupo", "🔒 Conversa Privada", "🤝 Adicionar Amigos", "🎙️ Recados de Voz"
+    aba_chat_grupo, aba_chat_privado, aba_amigos = st.tabs([
+        "👥 Chat em Grupo", "🔒 Conversa Privada", "🤝 Adicionar Amigos"
     ])
     
     # --- ABA 1: CHAT EM GRUPO ---
@@ -135,29 +136,65 @@ else:
                 for m in lista_mensagens:
                     remetente = m.get("usuario_id", "Desconhecido")
                     texto_msg = m.get("texto", "")
+                    audio_url = m.get("audio_url", "")
                     nome_exib = m.get("nome_exibicao", remetente)
                     
                     if remetente == st.session_state.usuario_id:
-                        st.markdown(f"💬 **Você ({nome_exib}):** {texto_msg}")
+                        st.markdown(f"💬 **Você ({nome_exib}):**")
                     else:
-                        st.markdown(f"💬 **{nome_exib}:** {texto_msg}")
+                        st.markdown(f"💬 **{nome_exib}:**")
+                        
+                    if texto_msg:
+                        st.write(texto_msg)
+                    if audio_url:
+                        st.audio(audio_url)
             else:
                 st.info("Nenhuma mensagem na sala global ainda.")
 
+        # Envio de Texto no Grupo
         with st.form(key="form_envio_grupo", clear_on_submit=True):
             msg_grupo = st.text_input("Escreva sua mensagem...", placeholder="Digite aqui...")
-            btn_enviar_grupo = st.form_submit_button("Enviar Mensagem 🚀")
+            btn_enviar_grupo = st.form_submit_button("Enviar Texto 🚀")
             
             if btn_enviar_grupo and msg_grupo.strip():
                 try:
                     banco.table("mensagens_grupo").insert({
                         "usuario_id": st.session_state.usuario_id,
                         "nome_exibicao": st.session_state.usuario_nome,
-                        "texto": msg_grupo.strip()
+                        "texto": msg_grupo.strip(),
+                        "audio_url": ""
                     }).execute()
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao enviar: {e}")
+
+        # Envio de Áudio no Grupo (Fora do form para aceitar o widget de microfone)
+        st.markdown("---")
+        st.write("🎙️ **Enviar Áudio para o Grupo:**")
+        audio_bytes_grupo = audio_recorder(text="Toque para Gravar Áudio", recording_color="#e74c3c", neutral_color="#3498db")
+        
+        if audio_bytes_grupo:
+            st.audio(audio_bytes_grupo, format="audio/wav")
+            if st.button("Confirmar e Enviar Áudio 🚀", key="btn_audio_grupo"):
+                try:
+                    nome_audio = f"audio_grupo_{st.session_state.usuario_id}_{int(st.time.time() if hasattr(st, 'time') else 1)}.wav"
+                    banco.storage.from_("audios").upload(
+                        path=nome_audio,
+                        file=audio_bytes_grupo,
+                        file_options={"content-type": "audio/wav"}
+                    )
+                    url_audio_pub = banco.storage.from_("audios").get_public_url(nome_audio)
+                    
+                    banco.table("mensagens_grupo").insert({
+                        "usuario_id": st.session_state.usuario_id,
+                        "nome_exibicao": st.session_state.usuario_nome,
+                        "texto": "🎤 [Mensagem de Voz]",
+                        "audio_url": url_audio_pub
+                    }).execute()
+                    st.success("Áudio enviado com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao enviar áudio: {e}")
 
     # --- ABA 2: CONVERSA PRIVADA ---
     with aba_chat_privado:
@@ -205,27 +242,65 @@ else:
                     for mp in mensagens_pv:
                         rem = mp.get("remetente_id")
                         txt = mp.get("texto")
+                        aud = mp.get("audio_url", "")
+                        
                         if rem == st.session_state.usuario_id:
-                            st.markdown(f"🔒 **Você:** {txt}")
+                            st.markdown("🔒 **Você:**")
                         else:
-                            st.markdown(f"🔒 **Amigo:** {txt}")
+                            st.markdown(f"🔒 **{amigo_escolhido_label.split(' ')[0]}:**")
+                            
+                        if txt:
+                            st.write(txt)
+                        if aud:
+                            st.audio(aud)
                 else:
                     st.info("Nenhuma mensagem privada ainda.")
             
+            # Envio de Texto Privado
             with st.form(key="form_envio_privado", clear_on_submit=True):
                 msg_privada = st.text_input("Escreva sua mensagem secreta...", placeholder="Digite aqui...")
-                btn_enviar_priv = st.form_submit_button("Enviar Privado 🔒")
+                btn_enviar_priv = st.form_submit_button("Enviar Texto Privado 🔒")
                 
                 if btn_enviar_priv and msg_privada.strip():
                     try:
                         banco.table("mensagens_privadas").insert({
                             "remetente_id": st.session_state.usuario_id,
                             "destinatario_id": destinatario_id,
-                            "texto": msg_privada.strip()
+                            "texto": msg_privada.strip(),
+                            "audio_url": ""
                         }).execute()
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro: {e}")
+
+            # Envio de Áudio Privado
+            st.markdown("---")
+            st.write(f"🎙️ **Enviar Áudio Privado para {amigo_escolhido_label.split(' ')[0]}:**")
+            audio_bytes_priv = audio_recorder(text="Toque para Gravar Áudio Privado", recording_color="#e74c3c", neutral_color="#3498db")
+            
+            if audio_bytes_priv:
+                st.audio(audio_bytes_priv, format="audio/wav")
+                if st.button("Confirmar e Enviar Áudio Privado 🔒", key="btn_audio_priv"):
+                    try:
+                        import time
+                        nome_audio_p = f"audio_priv_{st.session_state.usuario_id}_{int(time.time())}.wav"
+                        banco.storage.from_("audios").upload(
+                            path=nome_audio_p,
+                            file=audio_bytes_priv,
+                            file_options={"content-type": "audio/wav"}
+                        )
+                        url_audio_p_pub = banco.storage.from_("audios").get_public_url(nome_audio_p)
+                        
+                        banco.table("mensagens_privadas").insert({
+                            "remetente_id": st.session_state.usuario_id,
+                            "destinatario_id": destinatario_id,
+                            "texto": "🎤 [Mensagem de Voz]",
+                            "audio_url": url_audio_p_pub
+                        }).execute()
+                        st.success("Áudio privado enviado!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao enviar áudio privado: {e}")
 
     # --- ABA 3: ADICIONAR AMIGOS ---
     with aba_amigos:
@@ -288,29 +363,4 @@ else:
                 st.info("Nenhum pedido pendente.")
         except Exception:
             pass
-
-    # --- ABA 4: RECADOS DE VOZ (ÁUDIO NO CELULAR) ---
-    with aba_audios:
-        st.subheader("🎙️ Gravar Recado de Voz (Walkie-Talkie)")
-        st.markdown("Toque no botão do microfone abaixo para gravar sua voz direto pelo celular e ouça os recados enviados:")
-        
-        # Widget para gravar áudio direto no navegador mobile
-        audio_bytes = audio_recorder(
-            text="Toque para Gravar",
-            recording_color="#e74c3c",
-            neutral_color="#3498db",
-            icon_size="2x"
-        )
-        
-        if audio_bytes:
-            st.audio(audio_bytes, format="audio/wav")
-            st.success("Áudio gravado com sucesso! (Você pode ouvi-lo acima antes de enviar)")
             
-            if st.button("Enviar Áudio para o Chat Global 🚀"):
-                try:
-                    # Converte o áudio em bytes para base64 ou salva no Supabase Storage se preferir,
-                    # ou reproduz temporariamente.
-                    st.info("Áudio capturado! Para salvar permanentemente para todos ouvirem, você pode armazenar no Supabase Storage na tabela de áudios.")
-                except Exception as e:
-                    st.error(f"Erro ao enviar áudio: {e}")
-    
