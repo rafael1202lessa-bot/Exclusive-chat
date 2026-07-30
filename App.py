@@ -163,16 +163,14 @@ else:
         st.subheader("🔒 Mensagens Privadas (Direct)")
         
         try:
-            # Pega todos os usuários cadastrados para você escolher com quem falar (exceto você mesmo)
             resp_perfis = banco.table("perfis_exv").select("usuario_id, nome_exibicao").neq("usuario_id", st.session_state.usuario_id).execute()
             outros_usuarios = resp_perfis.data
         except Exception:
             outros_usuarios = []
             
         if not outros_usuarios:
-            st.info("Ainda não há outros usuários cadastrados para conversar em privado. Crie outra conta para testar!")
+            st.info("Ainda não há outros usuários cadastrados para conversar em privado.")
         else:
-            # Cria um dicionário para mapear Nome de Exibição -> usuario_id
             opcoes_amigos = {f"{u['nome_exibicao']} (@{u['usuario_id']})": u['usuario_id'] for u in outros_usuarios}
             
             amigo_escolhido_label = st.selectbox("Escolha com quem quer conversar:", list(opcoes_amigos.keys()))
@@ -180,9 +178,7 @@ else:
             
             st.markdown("---")
             
-            # Buscar mensagens privadas entre VOCÊ e o DESTINATÁRIO
             try:
-                # Buscamos mensagens onde (remetente = eu E destinatario = ele) OU (remetente = ele E destinatario = eu)
                 resp_pv = banco.table("mensagens_privadas").select("*").or_(
                     f"and(remetente_id.eq.{st.session_state.usuario_id},destinatario_id.eq.{destinatario_id}),and(remetente_id.eq.{destinatario_id},destinatario_id.eq.{st.session_state.usuario_id})"
                 ).order("created_at", desc=False).execute()
@@ -190,7 +186,6 @@ else:
             except Exception:
                 mensagens_pv = []
                 
-            # Exibe o histórico do chat privado
             priv_container = st.container()
             with priv_container:
                 if mensagens_pv:
@@ -204,7 +199,6 @@ else:
                 else:
                     st.info(f"Nenhuma mensagem privada com {amigo_escolhido_label.split(' ')[0]} ainda. Mande a primeira!")
             
-            # Caixa de envio da mensagem privada
             with st.form(key="form_envio_privado", clear_on_submit=True):
                 msg_privada = st.text_input("Escreva sua mensagem secreta...", placeholder="Digite aqui...")
                 btn_enviar_priv = st.form_submit_button("Enviar Privado 🔒")
@@ -222,11 +216,79 @@ else:
 
     # --- ABA 3: ADICIONAR AMIGOS ---
     with aba_amigos:
-        st.subheader("🤝 Seus Amigos")
-        st.write("Em breve: adicione amigos pelo ID para criar sua lista de contatos!")
+        st.subheader("🤝 Gerenciar Amigos")
+        
+        # Campo para buscar e adicionar amigo pelo ID
+        with st.form(key="form_adicionar_amigo", clear_on_submit=True):
+            nick_busca = st.text_input("Adicionar amigo por ID (Nick):", placeholder="Ex: joao123").strip().lower()
+            btn_add = st.form_submit_button("Adicionar Amigo ➕")
+            
+            if btn_add:
+                if not nick_busca:
+                    st.warning("Digite um Nick válido!")
+                elif nick_busca == st.session_state.usuario_id:
+                    st.warning("Você não pode adicionar a si mesmo!")
+                else:
+                    try:
+                        # Verifica se o usuário existe na tabela de perfis
+                        busca_usuario = banco.table("perfis_exv").select("*").eq("usuario_id", nick_busca).execute()
+                        
+                        if len(busca_usuario.data) == 0:
+                            st.error("Usuário não encontrado! Verifique o Nick digitado.")
+                        else:
+                            # Verifica se já são amigos
+                            ja_sao_amigos = banco.table("amigos_exv").select("*").eq("usuario_id", st.session_state.usuario_id).eq("amigo_id", nick_busca).execute()
+                            
+                            if len(ja_sao_amigos.data) > 0:
+                                st.warning("Vocês já são amigos!")
+                            else:
+                                # Adiciona na tabela de amigos
+                                banco.table("amigos_exv").insert({
+                                    "usuario_id": st.session_state.usuario_id,
+                                    "amigo_id": nick_busca,
+                                    "status": "aceito"
+                                }).execute()
+                                st.success(f"@{nick_busca} foi adicionado à sua lista de amigos com sucesso!")
+                                st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao adicionar amigo: {e}")
+                        
+        st.markdown("---")
+        st.subheader("📋 Sua Lista de Amigos")
+        
+        try:
+            # Busca os amigos do usuário logado
+            resp_amigos = banco.table("amigos_exv").select("amigo_id").eq("usuario_id", st.session_state.usuario_id).execute()
+            meus_amigos = resp_amigos.data
+            
+            if meus_amigos:
+                for a in meus_amigos:
+                    id_amigo = a.get("amigo_id")
+                    # Puxa os dados de exibição do amigo
+                    dados_amigo = banco.table("perfis_exv").select("nome_exibicao, foto_url").eq("usuario_id", id_amigo).execute()
+                    
+                    if len(dados_amigo.data) > 0:
+                        info = dados_amigo.data[0]
+                        nome_exib = info.get("nome_exibicao", id_amigo)
+                        foto = info.get("foto_url", "")
+                        
+                        col1, col2 = st.columns([1, 4])
+                        with col1:
+                            if foto:
+                                st.image(foto, width=50)
+                            else:
+                                st.write("👤")
+                        with col2:
+                            st.write(f"**{nome_exib}** (`@{id_amigo}`)")
+                    else:
+                        st.write(f"👤 `@{id_amigo}`")
+            else:
+                st.info("Você ainda não tem amigos adicionados. Digite um Nick acima para começar!")
+        except Exception as e:
+            st.warning("Carregando lista de amigos...")
 
     # --- ABA 4: LIGAÇÃO EXV ---
     with aba_ligacao:
         st.subheader("📞 Ligação EXV")
         st.write("Em breve: chamadas de vídeo e voz no app!")
-                
+                    
