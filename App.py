@@ -22,7 +22,7 @@ if "logado" not in st.session_state:
     st.session_state.usuario_foto = ""
 
 # =========================================================
-# TELA DE LOGIN / CADASTRO RECONSTRUÍDA (COM FOTO E NOME)
+# TELA DE LOGIN / CADASTRO
 # =========================================================
 if not st.session_state.logado:
     st.title("💬 Chat EXV — Entrar no Universo")
@@ -99,7 +99,7 @@ if not st.session_state.logado:
                     st.error(f"Erro no cadastro: {e}")
 
 # =========================================================
-# TELA DO APP COM ABAS (SÓ APARECE APÓS O LOGIN)
+# TELA DO APP COM ABAS
 # =========================================================
 else:
     st.sidebar.title("👤 Seu Perfil EXV")
@@ -118,17 +118,16 @@ else:
         "👥 Chat em Grupo", "🔒 Conversa Privada", "🤝 Adicionar Amigos", "📞 Ligação EXV"
     ])
     
+    # --- ABA 1: CHAT EM GRUPO ---
     with aba_chat_grupo:
         st.subheader("🌐 Sala Global do Chat EXV")
         
-        # 1. Buscar mensagens do grupo no Supabase (crie uma tabela chamada 'mensagens_grupo' no Supabase se ainda não tiver)
         try:
             resp_msgs = banco.table("mensagens_grupo").select("*").order("created_at", desc=False).execute()
             lista_mensagens = resp_msgs.data
         except Exception:
             lista_mensagens = []
             
-        # 2. Exibir o histórico de conversas
         chat_container = st.container()
         with chat_container:
             if lista_mensagens:
@@ -144,7 +143,6 @@ else:
             else:
                 st.info("Nenhuma mensagem na sala global ainda. Mande a primeira!")
 
-        # 3. Caixa de envio utilizando form para limpar o input automaticamente após enviar
         with st.form(key="form_envio_grupo", clear_on_submit=True):
             msg_grupo = st.text_input("Escreva sua mensagem para o grupo...", placeholder="Digite aqui...")
             btn_enviar_grupo = st.form_submit_button("Enviar Mensagem 🚀")
@@ -158,5 +156,77 @@ else:
                     }).execute()
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Erro ao enviar mensagem. Certifique-se de que a tabela 'mensagens_grupo' existe no Supabase. Erro: {e}")
+                    st.error(f"Erro ao enviar mensagem: {e}")
+
+    # --- ABA 2: CONVERSA PRIVADA ---
+    with aba_chat_privado:
+        st.subheader("🔒 Mensagens Privadas (Direct)")
         
+        try:
+            # Pega todos os usuários cadastrados para você escolher com quem falar (exceto você mesmo)
+            resp_perfis = banco.table("perfis_exv").select("usuario_id, nome_exibicao").neq("usuario_id", st.session_state.usuario_id).execute()
+            outros_usuarios = resp_perfis.data
+        except Exception:
+            outros_usuarios = []
+            
+        if not outros_usuarios:
+            st.info("Ainda não há outros usuários cadastrados para conversar em privado. Crie outra conta para testar!")
+        else:
+            # Cria um dicionário para mapear Nome de Exibição -> usuario_id
+            opcoes_amigos = {f"{u['nome_exibicao']} (@{u['usuario_id']})": u['usuario_id'] for u in outros_usuarios}
+            
+            amigo_escolhido_label = st.selectbox("Escolha com quem quer conversar:", list(opcoes_amigos.keys()))
+            destinatario_id = opcoes_amigos[amigo_escolhido_label]
+            
+            st.markdown("---")
+            
+            # Buscar mensagens privadas entre VOCÊ e o DESTINATÁRIO
+            try:
+                # Buscamos mensagens onde (remetente = eu E destinatario = ele) OU (remetente = ele E destinatario = eu)
+                resp_pv = banco.table("mensagens_privadas").select("*").or_(
+                    f"and(remetente_id.eq.{st.session_state.usuario_id},destinatario_id.eq.{destinatario_id}),and(remetente_id.eq.{destinatario_id},destinatario_id.eq.{st.session_state.usuario_id})"
+                ).order("created_at", desc=False).execute()
+                mensagens_pv = resp_pv.data
+            except Exception:
+                mensagens_pv = []
+                
+            # Exibe o histórico do chat privado
+            priv_container = st.container()
+            with priv_container:
+                if mensagens_pv:
+                    for mp in mensagens_pv:
+                        rem = mp.get("remetente_id")
+                        txt = mp.get("texto")
+                        if rem == st.session_state.usuario_id:
+                            st.markdown(f"🔒 **Você:** {txt}")
+                        else:
+                            st.markdown(f"🔒 **{amigo_escolhido_label.split(' ')[0]}:** {txt}")
+                else:
+                    st.info(f"Nenhuma mensagem privada com {amigo_escolhido_label.split(' ')[0]} ainda. Mande a primeira!")
+            
+            # Caixa de envio da mensagem privada
+            with st.form(key="form_envio_privado", clear_on_submit=True):
+                msg_privada = st.text_input("Escreva sua mensagem secreta...", placeholder="Digite aqui...")
+                btn_enviar_priv = st.form_submit_button("Enviar Privado 🔒")
+                
+                if btn_enviar_priv and msg_privada.strip():
+                    try:
+                        banco.table("mensagens_privadas").insert({
+                            "remetente_id": st.session_state.usuario_id,
+                            "destinatario_id": destinatario_id,
+                            "texto": msg_privada.strip()
+                        }).execute()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao enviar mensagem privada: {e}")
+
+    # --- ABA 3: ADICIONAR AMIGOS ---
+    with aba_amigos:
+        st.subheader("🤝 Seus Amigos")
+        st.write("Em breve: adicione amigos pelo ID para criar sua lista de contatos!")
+
+    # --- ABA 4: LIGAÇÃO EXV ---
+    with aba_ligacao:
+        st.subheader("📞 Ligação EXV")
+        st.write("Em breve: chamadas de vídeo e voz no app!")
+                
